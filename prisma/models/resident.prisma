@@ -1,0 +1,17 @@
+model Resident {
+  id            Int      @id @default(autoincrement())
+
+  block         String
+  houseNumber   String
+  fullName      String
+
+  occupancyType String   // owner / contract
+  houseStatus   String   // occupied / empty
+
+  notes         String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([block, houseNumber])
+}
