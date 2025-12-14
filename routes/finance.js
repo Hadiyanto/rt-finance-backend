@@ -53,7 +53,7 @@ router.get("/categories", auth(["admin", "bendahara"]), async (req, res) => {
  * GET ALL FINANCE ENTRIES
  * =========================================================
  */
-router.get("/finance", auth(["admin", "bendahara"]), async (req, res) => {
+router.get("/finance", async (req, res) => {
   try {
     const entries = await prisma.financeEntry.findMany({
       include: {
