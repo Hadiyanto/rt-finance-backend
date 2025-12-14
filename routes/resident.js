@@ -2,21 +2,27 @@ const express = require("express");
 const router = express.Router();
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
+const cacheResidents = require("../middlewares/cacheResidents");
+const redis = require("../lib/redisClient");
 const auth = require("../middlewares/auth");
 
 
-router.get("/residents", auth(["admin", "bendahara"]), async (req, res) => {
+router.get("/residents", cacheResidents, async (req, res) => {
   try {
     const residents = await prisma.resident.findMany({
       orderBy: { id: "asc" }
     });
 
-    res.json({
+    const response = {
       page: 1,
       limit: residents.length,
       total: residents.length,
       data: residents
-    });
+    };
+
+    await redis.set("residents", JSON.stringify(response));
+
+    res.json(response);
 
   } catch (err) {
     console.error("Error fetching residents:", err);
