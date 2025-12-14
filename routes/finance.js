@@ -10,7 +10,7 @@ const prisma = new PrismaClient();
  * GET ALL TRANSACTION TYPES
  * =========================================================
  */
-router.get("/transaction-types", auth(["admin", "bendahara"]), async (req, res) => {
+router.get("/transaction-types", async (req, res) => {
   try {
     const types = await prisma.transactionType.findMany({
       orderBy: { id: "asc" },
@@ -31,7 +31,7 @@ router.get("/transaction-types", auth(["admin", "bendahara"]), async (req, res) 
  * GET ALL CATEGORIES
  * =========================================================
  */
-router.get("/categories", auth(["admin", "bendahara"]), async (req, res) => {
+router.get("/categories", async (req, res) => {
   try {
     const categories = await prisma.category.findMany({
       include: { type: true }, // join transaction type
