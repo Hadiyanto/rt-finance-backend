@@ -37,10 +37,10 @@ model Resident {
 }
 
 model TransactionType {
-  id         Int            @id @default(autoincrement())
-  name       String         @unique
-  categories Category[] // ← relasi balik WAJIB ADA
-  entries    FinanceEntry[]
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  categories Category[]
+  entries   FinanceEntry[]
 }
 
 model Category {
