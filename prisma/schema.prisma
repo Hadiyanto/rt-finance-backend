@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  seed     = "node prisma/seed.ts"
 }
 
 datasource db {
@@ -18,19 +19,45 @@ model User {
 }
 
 model Resident {
-  id            Int      @id @default(autoincrement())
+  id Int @id @default(autoincrement())
 
-  block         String
-  houseNumber   String
-  fullName      String
+  block       String
+  houseNumber String
+  fullName    String
 
   occupancyType String
   houseStatus   String
 
-  notes         String?
+  notes String?
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @default(now()) @updatedAt
-  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
   @@unique([block, houseNumber], name: "block_houseNumber")
+}
+
+model TransactionType {
+  id         Int            @id @default(autoincrement())
+  name       String         @unique
+  categories Category[] // ← relasi balik WAJIB ADA
+  entries    FinanceEntry[]
+}
+
+model Category {
+  id      Int             @id @default(autoincrement())
+  name    String
+  typeId  Int
+  type    TransactionType @relation(fields: [typeId], references: [id])
+  entries FinanceEntry[]
+}
+
+model FinanceEntry {
+  id                Int             @id @default(autoincrement())
+  amount            Int
+  description       String?
+  date              DateTime        @default(now())
+  categoryId        Int
+  category          Category        @relation(fields: [categoryId], references: [id])
+  typeId            Int
+  type              TransactionType @relation(fields: [typeId], references: [id])
 }

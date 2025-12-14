@@ -7,7 +7,7 @@ const redis = require("../lib/redisClient");
 const auth = require("../middlewares/auth");
 
 
-router.get("/residents", cacheResidents, async (req, res) => {
+router.get("/residents", auth(["admin", "bendahara"]), cacheResidents, async (req, res) => {
   try {
     const residents = await prisma.resident.findMany({
       orderBy: { id: "asc" }

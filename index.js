@@ -1,5 +1,7 @@
 const express = require("express");
-const adminRoutes = require("./routes/admin");
+// const sheetRoutes = require("./routes/sheet");
+// const financeRoutes = require("./routes/finance");
+const apiRoutes = require("./routes/api");
 const app = express();
 const port = process.env.PORT || 3000;
 const cors = require("cors");
@@ -13,9 +15,13 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(require("./routes/auth"));
-app.use(require("./routes/resident"));
-app.use("/admin", adminRoutes);
+app.use("/api", apiRoutes);
+
+// app.use(require("./routes/auth"));
+// app.use(require("./routes/resident"));
+// app.use("/sheet", sheetRoutes);
+// app.use("/admin", adminRoutes);
+// app.use("/api", financeRoutes);
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
