@@ -17,11 +17,9 @@ app.use(cors({
 
 app.use("/api", apiRoutes);
 
-// app.use(require("./routes/auth"));
-// app.use(require("./routes/resident"));
-// app.use("/sheet", sheetRoutes);
-// app.use("/admin", adminRoutes);
-// app.use("/api", financeRoutes);
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
