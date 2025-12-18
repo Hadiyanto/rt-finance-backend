@@ -19,21 +19,20 @@ model User {
 }
 
 model Resident {
-  id Int @id @default(autoincrement())
-
-  block       String
-  houseNumber String
-  fullName    String
-
+  id           Int      @id @default(autoincrement())
+  block        String
+  houseNumber  String
+  fullName     String
   occupancyType String
   houseStatus   String
+  notes        String?
 
-  notes String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @default(now()) @updatedAt
 
   @@unique([block, houseNumber], name: "block_houseNumber")
+
+  MonthlyFees  MonthlyFee[]
 }
 
 model TransactionType {
@@ -60,4 +59,26 @@ model FinanceEntry {
   category          Category        @relation(fields: [categoryId], references: [id])
   typeId            Int
   type              TransactionType @relation(fields: [typeId], references: [id])
+}
+
+model MonthlyFee {
+  id          Int      @id @default(autoincrement())
+
+  block       String
+  houseNumber String
+  fullName    String     // disimpan redundant (snapshot)
+  
+  date        DateTime
+  amount      Int
+  imageUrl    String?
+
+  residentId  Int?
+  resident    Resident?  @relation(fields: [residentId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now()) @updatedAt
+
+  @@index([block])
+  @@index([houseNumber])
+  @@index([residentId])
 }

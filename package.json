@@ -15,12 +15,15 @@
     "@prisma/client": "^6.19.1",
     "@upstash/redis": "^1.35.8",
     "bcrypt": "^6.0.0",
+    "cloudinary": "^2.8.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "googleapis": "^168.0.0",
     "jsonwebtoken": "^9.0.3",
-    "openai": "^6.10.0"
+    "multer": "^2.0.2",
+    "openai": "^6.10.0",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "prisma": "^6.19.1"
