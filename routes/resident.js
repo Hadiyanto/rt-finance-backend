@@ -239,22 +239,22 @@ router.get("/blocks", async (req, res) => {
 
 router.get("/houses-number", async (req, res) => {
   try {
-    const numbers = await prisma.resident.findMany({
-      distinct: ["houseNumber"],
+    const { block } = req.query;
+
+    if (!block) {
+      return res.status(400).json({ message: "block is required" });
+    }
+
+    const houses = await prisma.resident.findMany({
+      where: { block },
       select: { houseNumber: true },
-      orderBy: { id: "asc" }
+      orderBy: { houseNumber: "asc" }
     });
 
-    const houseNumberList = numbers.map(b => b.houseNumber);
-
-    res.json({
-      total: houseNumberList.length,
-      blocks: houseNumberList
-    });
-
+    res.json(houses.map(h => h.houseNumber));
   } catch (err) {
-    console.error("Error fetching residents:", err);
-    res.status(500).json({ message: "Failed to fetch residents" });
+    console.error(err);
+    res.status(500).json({ message: "Failed to fetch house numbers" });
   }
 });
 
