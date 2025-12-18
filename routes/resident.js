@@ -248,7 +248,7 @@ router.get("/houses-number", async (req, res) => {
     const houses = await prisma.resident.findMany({
       where: { block },
       select: { houseNumber: true },
-      orderBy: { houseNumber: "asc" }
+      orderBy: { id: "asc" }
     });
 
     res.json(houses.map(h => h.houseNumber));
