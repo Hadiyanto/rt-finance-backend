@@ -28,7 +28,7 @@ model Resident {
   notes         String?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @default(now()) @updatedAt
-  MonthlyFees   MonthlyFee[]
+
 
   @@unique([block, houseNumber], name: "block_houseNumber")
 }
@@ -60,19 +60,25 @@ model FinanceEntry {
 }
 
 model MonthlyFee {
-  id          Int       @id @default(autoincrement())
-  block       String
-  houseNumber String
-  fullName    String
-  date        DateTime
-  amount      Int?
-  imageUrl    String?
-  residentId  Int?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @default(now()) @updatedAt
-  resident    Resident? @relation(fields: [residentId], references: [id])
+  id           Int      @id @default(autoincrement())
+
+  block        String
+  houseNumber  String
+  fullName     String
+  date         DateTime
+
+  amount       Int?     // final amount (hasil OCR / edit manual)
+  imageUrl     String?
+
+  status       String   @default("PENDING") // PENDING | COMPLETED | FAILED
+  rawText      String?
+  errorMessage String?
+  attempt      Int      @default(0)
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@index([block])
   @@index([houseNumber])
-  @@index([residentId])
+  @@index([status])
 }

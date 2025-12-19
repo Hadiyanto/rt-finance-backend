@@ -159,70 +159,55 @@ router.post("/monthly-fee-manual", async (req, res) => {
   try {
     const { block, houseNumber, date, imageUrl } = req.body;
 
-    let amount = null;
-    let rawText = null;
-
+    // =========================
+    // VALIDATION
+    // =========================
     if (!block || !houseNumber || !date || !imageUrl) {
-      return res.status(400).json({ message: "block, houseNumber, date, imageUrl required" });
+      return res.status(400).json({
+        message: "block, houseNumber, date (YYYY-MM), and imageUrl are required",
+      });
     }
 
-    let finalDate;
-
-    if (date.length === 7) {
-      // Jika input "2025-01"
-      finalDate = new Date(date + "-01T00:00:00");
-    } else {
-      // Jika input sudah "2025-01-20"
-      finalDate = new Date(date);
-    }
-
-    if (isNaN(finalDate.getTime())) {
+    // =========================
+    // PARSE DATE (YYYY-MM → Date)
+    // =========================
+    const parsedDate = new Date(`${date}-01`);
+    if (isNaN(parsedDate.getTime())) {
       return res.status(400).json({ message: "Invalid date format" });
     }
 
-    if (imageUrl) {
-      const img = await axios.get(imageUrl, { responseType: "arraybuffer" });
-      const tempPath = `tmp_${Date.now()}.jpg`;
-      fs.writeFileSync(tempPath, img.data);
-
-      const ocr = await Tesseract.recognize(tempPath, "eng");
-      rawText = ocr.data.text;
-      amount = extractAmountSmart(rawText);
-
-      fs.unlinkSync(tempPath);
-    }
-
-    // Ambil fullName otomatis dari table Resident
+    // =========================
+    // AUTO FULLNAME FROM RESIDENT
+    // =========================
     const resident = await prisma.resident.findFirst({
-      where: { block, houseNumber }
+      where: { block, houseNumber },
+      select: { fullName: true },
     });
 
     const fullName = resident ? resident.fullName : "Unknown";
 
-    // SIMPAN KE DB
-    const saved = await prisma.monthlyFee.create({
+    // =========================
+    // CREATE MONTHLY FEE (FAST)
+    // =========================
+    const fee = await prisma.monthlyFee.create({
       data: {
         block,
         houseNumber,
         fullName,
-        date: finalDate,
-        amount: amount ?? null,
-        imageUrl: imageUrl,
-        residentId: resident ? resident.id : null,
-      }
+        date: parsedDate,
+        imageUrl,
+        status: "PENDING",
+      },
     });
 
-    return res.json({
-      success: true,
-      data: saved,
-      rawText,
-      amount,
-      imageUrl: imageUrl,
+    return res.status(201).json({
+      message: "Monthly fee submitted",
+      data: fee,
     });
 
-  } catch (error) {
-    console.error("Monthly Fee error:", error);
-    return res.status(500).json({ message: "Failed to process monthly fee" });
+  } catch (err) {
+    console.error("Monthly Fee error:", err);
+    return res.status(500).json({ message: "Failed to submit monthly fee" });
   }
 });
 

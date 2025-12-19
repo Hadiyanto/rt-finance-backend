@@ -1,0 +1,152 @@
+const express = require("express");
+const axios = require("axios");
+const fs = require("fs");
+const Tesseract = require("tesseract.js");
+const { PrismaClient } = require("@prisma/client");
+
+const prisma = new PrismaClient();
+const router = express.Router();
+
+// ===============================
+// SMART AMOUNT EXTRACTOR
+// ===============================
+function extractAmountSmart(raw) {
+  let text = raw;
+  text = text.replace(/\s+/g, " ");
+
+  const matches = [...text.matchAll(/(Rp|IDR)\s*([0-9\.\,]+)/gi)];
+
+  const candidates = [];
+
+  for (const m of matches) {
+    let numStr = m[2];
+    numStr = numStr.replace(/(\.|\,)00$/i, "");
+    numStr = numStr.replace(/\./g, "").replace(/,/g, "");
+
+    const num = parseInt(numStr);
+    if (!isNaN(num) && num >= 1000) candidates.push(num);
+  }
+
+  if (candidates.length === 0) {
+    const nominalMatches = [...text.matchAll(/nominal\s*([0-9\.\,]+)/gi)];
+    for (const m of nominalMatches) {
+      let numStr = m[1];
+      numStr = numStr.replace(/(\.|\,)00$/i, "");
+      numStr = numStr.replace(/\./g, "").replace(/,/g, "");
+      const num = parseInt(numStr);
+      if (!isNaN(num) && num >= 1000) candidates.push(num);
+    }
+  }
+
+  if (candidates.length === 0) {
+    const fallback = text.match(/[0-9]{4,}/g);
+    if (!fallback) return null;
+
+    const nums = fallback
+      .map(n => parseInt(n))
+      .filter(n => n < 100000000);
+
+    if (nums.length === 0) return null;
+
+    const sorted = nums.sort((a, b) => a - b);
+    candidates.push(sorted.length === 1 ? sorted[0] : sorted[sorted.length - 2]);
+  }
+
+  // Ambil angka terbesar
+  let amount = Math.max(...candidates);
+
+  // -------------------------------------
+  // NEW RULE: Remove bank fee (2500 / 6500)
+  // -------------------------------------
+  const last4 = amount.toString().slice(-4);
+
+  if (last4 === "2500") {
+    amount = amount - 2500; // atau overwrite: amount = parseInt(amount.toString().slice(0, -4) + "0000");
+  } else if (last4 === "6500") {
+    amount = amount - 6500;
+  }
+
+  return amount;
+}
+
+// ===============================
+// CRON OCR RUNNER
+// ===============================
+router.post("/cron/run-ocr", async (req, res) => {
+  // 🔐 SECURITY
+  if (req.headers["x-cron-secret"] !== process.env.CRON_SECRET) {
+    return res.status(403).json({ message: "Forbidden" });
+  }
+
+  try {
+    // Ambil batch kecil biar server aman
+    const jobs = await prisma.monthlyFee.findMany({
+      where: { status: "PENDING" },
+      orderBy: { createdAt: "asc" },
+      take: 3, // 🔥 batasi!
+    });
+
+    if (jobs.length === 0) {
+      return res.json({ message: "No pending OCR jobs" });
+    }
+
+    let processed = 0;
+
+    for (const job of jobs) {
+      try {
+        // Mark as processing (optional tapi bagus)
+        await prisma.monthlyFee.update({
+          where: { id: job.id },
+          data: { status: "PROCESSING" },
+        });
+
+        // Download image
+        const img = await axios.get(job.imageUrl, {
+          responseType: "arraybuffer",
+        });
+
+        const tmpPath = `tmp_ocr_${job.id}.jpg`;
+        fs.writeFileSync(tmpPath, img.data);
+
+        // OCR
+        const result = await Tesseract.recognize(tmpPath, "eng");
+        const rawText = result.data.text;
+        const amount = extractAmountSmart(rawText);
+
+        fs.unlinkSync(tmpPath);
+
+        await prisma.monthlyFee.update({
+          where: { id: job.id },
+          data: {
+            rawText,
+            amount,
+            status: amount ? "COMPLETED" : "FAILED",
+            attempt: { increment: 1 },
+          },
+        });
+
+        processed++;
+      } catch (err) {
+        await prisma.monthlyFee.update({
+          where: { id: job.id },
+          data: {
+            status: "FAILED",
+            errorMessage: String(err),
+            attempt: { increment: 1 },
+          },
+        });
+      }
+    }
+
+    res.json({
+      message: "OCR cron finished",
+      processed,
+    });
+
+  } catch (err) {
+    console.error("CRON OCR ERROR:", err);
+    res.status(500).json({ message: "Cron OCR failed" });
+  }
+});
+
+module.exports = router;
