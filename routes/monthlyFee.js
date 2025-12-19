@@ -134,7 +134,7 @@ router.post("/monthly-fee", upload.single("image"), async (req, res) => {
         houseNumber,
         fullName,
         date: finalDate,
-        amount,
+        amount: amount ?? null,
         imageUrl: uploaded.secure_url,
         residentId: resident ? resident.id : null,
       }
