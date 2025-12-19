@@ -154,4 +154,70 @@ router.post("/monthly-fee", upload.single("image"), async (req, res) => {
   }
 });
 
+router.post("/monthly-fee-manual", async (req, res) => {
+  try {
+    const { block, houseNumber, date, imageUrl } = req.body;
+
+    if (!block || !houseNumber || !date || !imageUrl) {
+      return res.status(400).json({ message: "block, houseNumber, date, imageUrl required" });
+    }
+
+    let finalDate;
+
+    if (date.length === 7) {
+      // Jika input "2025-01"
+      finalDate = new Date(date + "-01T00:00:00");
+    } else {
+      // Jika input sudah "2025-01-20"
+      finalDate = new Date(date);
+    }
+
+    if (isNaN(finalDate.getTime())) {
+      return res.status(400).json({ message: "Invalid date format" });
+    }
+
+    // OCR dengan Tesseract
+    const ocr = await Tesseract.recognize(localPath, "eng");
+    const rawText = ocr.data.text;
+
+    // Extract nominal
+    const amount = extractAmountSmart(rawText);
+
+    // Ambil fullName otomatis dari table Resident
+    const resident = await prisma.resident.findFirst({
+      where: { block, houseNumber }
+    });
+
+    const fullName = resident ? resident.fullName : "Unknown";
+
+    // DELETE local file
+    fs.unlinkSync(localPath);
+
+    // SIMPAN KE DB
+    const saved = await prisma.monthlyFee.create({
+      data: {
+        block,
+        houseNumber,
+        fullName,
+        date: finalDate,
+        amount: amount ?? null,
+        imageUrl: imageUrl,
+        residentId: resident ? resident.id : null,
+      }
+    });
+
+    return res.json({
+      success: true,
+      data: saved,
+      rawText,
+      amount,
+      imageUrl: imageUrl,
+    });
+
+  } catch (error) {
+    console.error("Monthly Fee error:", error);
+    return res.status(500).json({ message: "Failed to process monthly fee" });
+  }
+});
+
 module.exports = router;
