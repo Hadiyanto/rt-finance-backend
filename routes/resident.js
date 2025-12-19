@@ -258,4 +258,50 @@ router.get("/houses-number", async (req, res) => {
   }
 });
 
+router.get("/block-houses", async (req, res) => {
+  try {
+    const residents = await prisma.resident.findMany({
+      select: { block: true, houseNumber: true },
+      orderBy: [{ block: "asc" }]
+    });
+
+    const map = {};
+
+    // Group residents by block
+    residents.forEach((r) => {
+      if (!map[r.block]) map[r.block] = [];
+      map[r.block].push(r.houseNumber);
+    });
+
+    // SORT houses ASCENDING (1, 2, 3, 10, 12A ...)
+    Object.keys(map).forEach((block) => {
+      map[block].sort((a, b) => {
+        const numA = parseInt(a);
+        const numB = parseInt(b);
+
+        // Sort number ascending
+        if (numA !== numB) return numA - numB;
+
+        // Same number? sort alphabet ascending
+        return a.localeCompare(b);
+      });
+    });
+
+    const result = Object.keys(map).map((block) => ({
+      block,
+      houses: map[block]
+    }));
+
+    return res.json({
+      totalBlocks: result.length,
+      data: result
+    });
+
+  } catch (err) {
+    console.error("Error:", err);
+    return res.status(500).json({ message: "Failed to fetch block-houses data" });
+  }
+});
+
+
 module.exports = router;
