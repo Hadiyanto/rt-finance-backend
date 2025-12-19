@@ -19,27 +19,25 @@ model User {
 }
 
 model Resident {
-  id           Int      @id @default(autoincrement())
-  block        String
-  houseNumber  String
-  fullName     String
+  id            Int          @id @default(autoincrement())
+  block         String
+  houseNumber   String
+  fullName      String
   occupancyType String
   houseStatus   String
-  notes        String?
-
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @default(now()) @updatedAt
+  notes         String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @default(now()) @updatedAt
+  MonthlyFees   MonthlyFee[]
 
   @@unique([block, houseNumber], name: "block_houseNumber")
-
-  MonthlyFees  MonthlyFee[]
 }
 
 model TransactionType {
-  id        Int      @id @default(autoincrement())
-  name      String   @unique
+  id         Int            @id @default(autoincrement())
+  name       String         @unique
   categories Category[]
-  entries   FinanceEntry[]
+  entries    FinanceEntry[]
 }
 
 model Category {
@@ -51,32 +49,28 @@ model Category {
 }
 
 model FinanceEntry {
-  id                Int             @id @default(autoincrement())
-  amount            Int
-  description       String?
-  date              DateTime        @default(now())
-  categoryId        Int
-  category          Category        @relation(fields: [categoryId], references: [id])
-  typeId            Int
-  type              TransactionType @relation(fields: [typeId], references: [id])
+  id          Int             @id @default(autoincrement())
+  amount      Int
+  description String?
+  date        DateTime        @default(now())
+  categoryId  Int
+  typeId      Int
+  category    Category        @relation(fields: [categoryId], references: [id])
+  type        TransactionType @relation(fields: [typeId], references: [id])
 }
 
 model MonthlyFee {
-  id          Int      @id @default(autoincrement())
-
+  id          Int       @id @default(autoincrement())
   block       String
   houseNumber String
-  fullName    String     // disimpan redundant (snapshot)
-  
+  fullName    String
   date        DateTime
-  amount      Int
+  amount      Int?
   imageUrl    String?
-
   residentId  Int?
-  resident    Resident?  @relation(fields: [residentId], references: [id])
-
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now()) @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now()) @updatedAt
+  resident    Resident? @relation(fields: [residentId], references: [id])
 
   @@index([block])
   @@index([houseNumber])
