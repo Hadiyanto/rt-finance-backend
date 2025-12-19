@@ -1,5 +1,6 @@
 const express = require("express");
 const multer = require("multer");
+const axios = require("axios");
 const fs = require("fs");
 const Tesseract = require("tesseract.js");
 const cloudinary = require("../config/cloudinary");
@@ -158,6 +159,9 @@ router.post("/monthly-fee-manual", async (req, res) => {
   try {
     const { block, houseNumber, date, imageUrl } = req.body;
 
+    let amount = null;
+    let rawText = null;
+
     if (!block || !houseNumber || !date || !imageUrl) {
       return res.status(400).json({ message: "block, houseNumber, date, imageUrl required" });
     }
@@ -176,12 +180,17 @@ router.post("/monthly-fee-manual", async (req, res) => {
       return res.status(400).json({ message: "Invalid date format" });
     }
 
-    // OCR dengan Tesseract
-    const ocr = await Tesseract.recognize(localPath, "eng");
-    const rawText = ocr.data.text;
+    if (imageUrl) {
+      const img = await axios.get(imageUrl, { responseType: "arraybuffer" });
+      const tempPath = `tmp_${Date.now()}.jpg`;
+      fs.writeFileSync(tempPath, img.data);
 
-    // Extract nominal
-    const amount = extractAmountSmart(rawText);
+      const ocr = await Tesseract.recognize(tempPath, "eng");
+      rawText = ocr.data.text;
+      amount = extractAmountSmart(rawText);
+
+      fs.unlinkSync(tempPath);
+    }
 
     // Ambil fullName otomatis dari table Resident
     const resident = await prisma.resident.findFirst({
@@ -189,9 +198,6 @@ router.post("/monthly-fee-manual", async (req, res) => {
     });
 
     const fullName = resident ? resident.fullName : "Unknown";
-
-    // DELETE local file
-    fs.unlinkSync(localPath);
 
     // SIMPAN KE DB
     const saved = await prisma.monthlyFee.create({
