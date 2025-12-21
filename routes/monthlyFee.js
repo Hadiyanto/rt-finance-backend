@@ -266,8 +266,9 @@ router.get('/monthly-fee/breakdown/:year/:month', async (req, res) => {
       select: {
         block: true,
         houseNumber: true,
-        fullName: true
-      }
+        fullName: true,
+      },
+      orderBy: { id: "asc" }
     })
 
     // 2️⃣ Deferred aktif + in range
