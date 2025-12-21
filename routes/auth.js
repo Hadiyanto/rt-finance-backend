@@ -18,7 +18,7 @@ router.get("/auth/hash/:password", async (req, res) => {
   }
 });
 
-router.get("/auth/validate", auth(["admin", "bendahara"]), async (req, res) => {
+router.get("/auth/validate", auth(["admin", "bendahara", "RT"]), async (req, res) => {
   try {
     res.json({ "valid": true });
   } catch (err) {

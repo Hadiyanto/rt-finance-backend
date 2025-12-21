@@ -69,6 +69,20 @@ function extractAmountSmart(raw) {
   return amount;
 }
 
+
+function getMonthYearLabel(ym) {
+  const [year, month] = ym.split('-').map(Number)
+
+  const months = [
+    'Januari', 'Februari', 'Maret', 'April',
+    'Mei', 'Juni', 'Juli', 'Agustus',
+    'September', 'Oktober', 'November', 'Desember'
+  ]
+
+  return `${months[month - 1]} ${year}`
+}
+
+
 // ===============================
 // CRON OCR RUNNER
 // ===============================
@@ -148,5 +162,80 @@ router.post("/cron/run-ocr", async (req, res) => {
     res.status(500).json({ message: "Cron OCR failed" });
   }
 });
+
+router.post('/cron/release-deferred-v1/:date', async (req, res) => {
+  if (req.headers['x-cron-secret'] !== process.env.CRON_SECRET) {
+    return res.status(403).json({ message: 'Forbidden' })
+  }
+
+  // 🔥 HARDCODE BULAN (NANTI DINAMIS)
+  const RELEASE_MONTH = req.params.date
+  const now = new Date()
+
+  try {
+    const subs = await prisma.deferredSubscription.findMany({
+      where: { isActive: true }
+    })
+
+    let processed = 0
+    let skipped = 0
+
+    for (const sub of subs) {
+      // ---- RANGE CHECK ----
+      if (
+        RELEASE_MONTH < sub.startMonth ||
+        RELEASE_MONTH > sub.endMonth
+      ) {
+        skipped++
+        continue
+      }
+
+      if (sub.remaining < sub.monthlyAmount) {
+        skipped++
+        continue
+      }
+
+      await prisma.$transaction(async (tx) => {
+        // 1️⃣ INSERT LEDGER (DEFERRED EVENT LOG)
+        await tx.cashLedger.create({
+          data: {
+            type: 'OUT', // 🔥 hanya event log
+            amount: sub.monthlyAmount,
+            bucket: 'DEFERRED',
+            balance: null, // 🔥 WAJIB NULL
+            description: `Iuran ${getMonthYearLabel(RELEASE_MONTH)} - Blok ${sub.block} No ${sub.houseNumber}`,
+            date: now,
+            source: 'MONTHLY_FEE',
+            sourceRef: sub.id,
+            createdBy: 'cron'
+          }
+        })
+
+        // 2️⃣ UPDATE SUBSCRIPTION
+        const newRemaining = sub.remaining - sub.monthlyAmount
+
+        await tx.deferredSubscription.update({
+          where: { id: sub.id },
+          data: {
+            remaining: newRemaining,
+            isActive: newRemaining > 0
+          }
+        })
+      })
+
+      processed++
+    }
+
+    res.json({
+      message: 'Deferred monthly release completed',
+      releaseMonth: RELEASE_MONTH,
+      processed,
+      skipped
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 
 module.exports = router;

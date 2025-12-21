@@ -8,6 +8,8 @@ router.use(require("./extractAmount"));
 router.use(require("./uploadDrive"));
 router.use(require("./monthlyFee"));
 router.use(require("./cron"));
+router.use(require("./cashLedger"));
+router.use(require("./deferredSubscription"));
 router.use("/sheet", require("./sheet"));
 
 module.exports = router;

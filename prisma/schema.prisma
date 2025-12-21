@@ -82,3 +82,59 @@ model MonthlyFee {
   @@index([houseNumber])
   @@index([status])
 }
+
+model CashLedger {
+  id          String      @id @default(cuid())
+  type        CashType
+  amount      Int
+  balance     Int?
+  description String
+  date        DateTime
+
+  bucket      CashBucket  @default(CASH) // 🔥 BARU
+
+  source      CashSource?
+  sourceRef   String?
+
+  createdBy   String?
+  createdAt   DateTime    @default(now())
+}
+
+model DeferredSubscription {
+  id            String   @id @default(cuid())
+
+  // Identitas (tanpa FK)
+  block         String
+  houseNumber   String
+
+  // Kontrak pembayaran
+  totalAmount   Int
+  monthlyAmount Int
+  remaining     Int
+
+  startMonth    String   // contoh: "2025-01"
+  endMonth      String   // contoh: "2025-12"
+
+  isActive      Boolean  @default(true)
+
+  // Metadata
+  sourceRef     String?  // optional (string only)
+  createdAt     DateTime @default(now())
+}
+
+enum CashType {
+  IN
+  OUT
+}
+
+enum CashSource {
+  MANUAL
+  MONTHLY_FEE
+  DONATION
+  OTHER
+}
+
+enum CashBucket {
+  CASH
+  DEFERRED
+}
