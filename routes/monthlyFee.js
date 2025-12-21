@@ -157,12 +157,12 @@ router.post("/monthly-fee", upload.single("image"), async (req, res) => {
 
 router.post("/monthly-fee-manual", async (req, res) => {
   try {
-    const { block, houseNumber, date, imageUrl } = req.body;
+    const { block, houseNumber, date, name, notes, imageUrl } = req.body;
 
     // =========================
     // VALIDATION
     // =========================
-    if (!block || !houseNumber || !date || !imageUrl) {
+    if (!block || !houseNumber || !date || !imageUrl || !!name) {
       return res.status(400).json({
         message: "block, houseNumber, date (YYYY-MM), and imageUrl are required",
       });
@@ -184,7 +184,7 @@ router.post("/monthly-fee-manual", async (req, res) => {
       select: { fullName: true },
     });
 
-    const fullName = resident ? resident.fullName : "Unknown";
+    const fullName = name?.trim() || resident?.fullName || "Unknown";
 
     // =========================
     // CREATE MONTHLY FEE (FAST)
@@ -194,6 +194,7 @@ router.post("/monthly-fee-manual", async (req, res) => {
         block,
         houseNumber,
         fullName,
+        notes: notes?.trim() || null,
         date: parsedDate,
         imageUrl,
         status: "PENDING",
