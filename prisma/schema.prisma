@@ -67,7 +67,7 @@ model MonthlyFee {
   fullName     String
   date         DateTime
   notes        String?
-  
+
   amount       Int?     // final amount (hasil OCR / edit manual)
   imageUrl     String?
 
@@ -121,6 +121,38 @@ model DeferredSubscription {
   // Metadata
   sourceRef     String?  // optional (string only)
   createdAt     DateTime @default(now())
+}
+
+model MonthlyFeeBreakdown {
+  id          String   @id @default(cuid())
+
+  // Identitas rumah
+  block       String
+  houseNumber String
+  fullName    String
+
+  // Periode
+  month       String   // "YYYY-MM"
+
+  // Total iuran
+  totalAmount Int
+
+  // Breakdown
+  kasRT       Int
+  agamaRT     Int
+  sampah      Int
+  keamanan    Int
+  agamaRW     Int
+  kasRW       Int
+  kkmRW       Int
+
+  // Metadata
+  source      String   // "DEFERRED" | "MONTHLY_FEE"
+  sourceRef   String?  // subscriptionId / monthlyFeeId
+
+  createdAt   DateTime @default(now())
+
+  @@unique([block, houseNumber, month])
 }
 
 enum CashType {

@@ -10,6 +10,47 @@ const prisma = new PrismaClient();
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
 
+function breakdownAmount(total) {
+  if (total === 100000) {
+    return {
+      kasRT: 0,
+      agamaRT: 0,
+      sampah: 0,
+      keamanan: 100000,
+      agamaRW: 0,
+      kasRW: 0,
+      kkmRW: 0
+    }
+  }
+
+  if (total === 210000 || total === 200000) {
+    return {
+      kasRT: 30000,
+      agamaRT: 2400,
+      sampah: 50000,
+      keamanan: 97500,
+      agamaRW: 21600,
+      kasRW: 3000,
+      kkmRW: 5500
+    }
+  }
+
+  if (total === 186000) {
+    return {
+      kasRT: 30000,
+      agamaRT: 0,
+      sampah: 50000,
+      keamanan: 97500,
+      agamaRW: 0,
+      kasRW: 3000,
+      kkmRW: 5500
+    }
+  }
+
+  throw new Error(`Unsupported totalAmount: ${total}`)
+}
+
+
 // -------------------------------------------------------
 // SMART RULE ENGINE — Extract amount dari teks OCR
 // -------------------------------------------------------
@@ -211,5 +252,124 @@ router.post("/monthly-fee-manual", async (req, res) => {
     return res.status(500).json({ message: "Failed to submit monthly fee" });
   }
 });
+
+router.get('/monthly-fee/breakdown/:year/:month', async (req, res) => {
+  try {
+    const { year, month } = req.params
+    const period = `${year}-${month.padStart(2, '0')}`
+
+    const startDate = new Date(`${period}-01`)
+    const endDate = new Date(`${period}-31`)
+
+    // 1️⃣ BASE: semua resident
+    const residents = await prisma.resident.findMany({
+      select: {
+        block: true,
+        houseNumber: true,
+        fullName: true
+      }
+    })
+
+    // 2️⃣ Deferred aktif + in range
+    const deferredSubs = await prisma.deferredSubscription.findMany({
+      where: { isActive: true },
+      select: {
+        block: true,
+        houseNumber: true,
+        monthlyAmount: true,
+        startMonth: true,
+        endMonth: true
+      }
+    })
+
+    const isInRange = (period, start, end) =>
+      period >= start && period <= end
+
+    const deferredMap = new Map()
+    deferredSubs.forEach(d => {
+      if (isInRange(period, d.startMonth, d.endMonth)) {
+        deferredMap.set(`${d.block}-${d.houseNumber}`, d)
+      }
+    })
+
+    // 3️⃣ MonthlyFee bulan tsb
+    const monthlyFees = await prisma.monthlyFee.findMany({
+      where: {
+        date: {
+          gte: startDate,
+          lt: endDate
+        }
+      },
+      select: {
+        block: true,
+        houseNumber: true,
+        amount: true
+      }
+    })
+
+    const feeMap = new Map()
+    monthlyFees.forEach(f => {
+      feeMap.set(`${f.block}-${f.houseNumber}`, f)
+    })
+
+    // 4️⃣ BUILD RESULT (SELALU PUSH RESIDENT)
+    const data = []
+
+    for (const resi of residents) {
+      const key = `${resi.block}-${resi.houseNumber}`
+
+      // default kosong
+      let row = {
+        block: resi.block,
+        houseNumber: resi.houseNumber,
+        fullName: resi.fullName,
+        source: null,
+        totalAmount: null,
+        kasRT: null,
+        agamaRT: null,
+        sampah: null,
+        keamanan: null,
+        agamaRW: null,
+        kasRW: null,
+        kkmRW: null
+      }
+
+      // PRIORITAS 1: DEFERRED (valid)
+      if (deferredMap.has(key)) {
+        const sub = deferredMap.get(key)
+        const breakdown = breakdownAmount(sub.monthlyAmount)
+
+        row = {
+          ...row,
+          source: 'DEFERRED',
+          totalAmount: sub.monthlyAmount,
+          ...breakdown
+        }
+      }
+      // PRIORITAS 2: MONTHLY_FEE
+      else if (feeMap.has(key)) {
+        const fee = feeMap.get(key)
+        const breakdown = breakdownAmount(fee.amount)
+
+        row = {
+          ...row,
+          source: 'MONTHLY_FEE',
+          totalAmount: fee.amount,
+          ...breakdown
+        }
+      }
+
+      data.push(row)
+    }
+
+    res.json({
+      period,
+      total: data.length,
+      data
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
 
 module.exports = router;
