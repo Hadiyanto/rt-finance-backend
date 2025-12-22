@@ -203,9 +203,9 @@ router.post("/monthly-fee-manual", async (req, res) => {
     // =========================
     // VALIDATION
     // =========================
-    if (!block || !houseNumber || !date || !imageUrl || !!name) {
+    if (!block || !houseNumber || !date || !imageUrl || !name) {
       return res.status(400).json({
-        message: "block, houseNumber, date (YYYY-MM), and imageUrl are required",
+        message: `block ${block}, houseNumber ${houseNumber}, name ${name}, date ${date}, and imageUrl ${imageUrl} are required`,
       });
     }
 
@@ -220,12 +220,12 @@ router.post("/monthly-fee-manual", async (req, res) => {
     // =========================
     // AUTO FULLNAME FROM RESIDENT
     // =========================
-    const resident = await prisma.resident.findFirst({
-      where: { block, houseNumber },
-      select: { fullName: true },
-    });
+    // const resident = await prisma.resident.findFirst({
+    //   where: { block, houseNumber },
+    //   select: { fullName: true },
+    // });
 
-    const fullName = name?.trim() || resident?.fullName || "Unknown";
+    // const fullName = name?.trim();
 
     // =========================
     // CREATE MONTHLY FEE (FAST)
@@ -234,7 +234,7 @@ router.post("/monthly-fee-manual", async (req, res) => {
       data: {
         block,
         houseNumber,
-        fullName,
+        fullName: name?.trim() || null,
         notes: notes?.trim() || null,
         date: parsedDate,
         imageUrl,
