@@ -217,6 +217,36 @@ router.post("/monthly-fee-manual", async (req, res) => {
       return res.status(400).json({ message: "Invalid date format" });
     }
 
+    const existingFee = await prisma.monthlyFee.findFirst({
+      where: {
+        block,
+        houseNumber,
+        date: parsedDate,
+      },
+    });
+
+    if (existingFee) {
+      return res.status(409).json({
+        code: "MONTHLY_FEE_ALREADY_SUBMITTED",
+        message: "Monthly fee for this house and month has already been submitted",
+      });
+    }
+
+    const deferred = await prisma.deferredSubscription.findFirst({
+      where: {
+        block,
+        houseNumber,
+        isActive: true,
+      },
+    });
+
+    if (deferred) {
+      return res.status(409).json({
+        code: "DEFERRED_ACTIVE",
+        message: "This month is already covered by a prepaid subscription",
+      });
+    }
+
     // =========================
     // AUTO FULLNAME FROM RESIDENT
     // =========================
