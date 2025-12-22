@@ -196,6 +196,74 @@ router.post("/monthly-fee", upload.single("image"), async (req, res) => {
   }
 });
 
+router.post("/monthly-fee-validate", async (req, res) => {
+  try {
+    const { block, houseNumber, date } = req.body;
+
+    // =========================
+    // VALIDATION
+    // =========================
+    if (!block || !houseNumber || !date) {
+      return res.status(400).json({
+        message: `block ${block}, houseNumber ${houseNumber}, date ${date} are required`,
+      });
+    }
+
+    const parsedDate = new Date(`${date}-01`);
+    if (isNaN(parsedDate.getTime())) {
+      return res.status(400).json({ message: "Invalid date format" });
+    }
+
+    let isSubmitted = false;
+    let isDeferred = false;
+    let code = null;
+    let message = null;
+
+    const existingFee = await prisma.monthlyFee.findFirst({
+      where: {
+        block,
+        houseNumber,
+        date: parsedDate,
+      },
+    });
+
+    if (existingFee) {
+      isSubmitted = true;
+      code = "MONTHLY_FEE_ALREADY_SUBMITTED";
+      message = "Monthly fee for this house and month has already been submitted";
+    }
+
+    const deferred = await prisma.deferredSubscription.findFirst({
+      where: {
+        block,
+        houseNumber,
+        isActive: true,
+      },
+    });
+
+    if (deferred) {
+      isDeferred = true;
+      code = "DEFERRED_ACTIVE";
+      message = "This month is already covered by a prepaid subscription";
+    }
+
+    if (isSubmitted || isDeferred) {
+      return res.status(409).json({
+        code,
+        message,
+      });
+    } else {
+      return res.status(201).json({
+        message: "Monthly fee able to submit"
+      });
+    }
+
+  } catch (err) {
+    console.error("Monthly Fee error:", err);
+    return res.status(500).json({ message: "Failed to validate monthly fee" });
+  }
+});
+
 router.post("/monthly-fee-manual", async (req, res) => {
   try {
     const { block, houseNumber, date, name, notes, imageUrl } = req.body;
