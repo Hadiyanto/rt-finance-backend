@@ -350,6 +350,7 @@ router.get('/monthly-fee/breakdown/:year/:month', async (req, res) => {
       // PRIORITAS 2: MONTHLY_FEE
       else if (feeMap.has(key)) {
         const fee = feeMap.get(key)
+        if (fee.amount == null) continue
         const breakdown = breakdownAmount(fee.amount)
 
         row = {
