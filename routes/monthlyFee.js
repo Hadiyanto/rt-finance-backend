@@ -297,13 +297,19 @@ router.post("/monthly-fee-manual", async (req, res) => {
       return res.status(400).json({ message: "Invalid date format" });
     }
 
-    const existingFee = await prisma.monthlyFee.findFirst({
-      where: {
-        block,
-        houseNumber,
-        date: parsedDate,
-      },
-    });
+    // =========================
+    // PARALLEL CHECKS (EXISTING & DEFERRED)
+    // =========================
+    const [existingFee, deferred] = await Promise.all([
+      prisma.monthlyFee.findFirst({
+        where: { block, houseNumber, date: parsedDate },
+        select: { id: true } // Optimization: Select only ID
+      }),
+      prisma.deferredSubscription.findFirst({
+        where: { block, houseNumber, isActive: true },
+        select: { id: true } // Optimization: Select only ID
+      })
+    ]);
 
     if (existingFee) {
       return res.status(409).json({
@@ -311,14 +317,6 @@ router.post("/monthly-fee-manual", async (req, res) => {
         message: "Monthly fee for this house and month has already been submitted",
       });
     }
-
-    const deferred = await prisma.deferredSubscription.findFirst({
-      where: {
-        block,
-        houseNumber,
-        isActive: true,
-      },
-    });
 
     if (deferred) {
       return res.status(409).json({
@@ -352,8 +350,8 @@ router.post("/monthly-fee-manual", async (req, res) => {
       },
     });
 
-    // Invalidate Cache
-    await invalidateBreakdown(parsedDate);
+    // Fire-and-forget Cache Invalidation (Non-blocking)
+    invalidateBreakdown(parsedDate).catch(err => console.error("Cache invalidation error:", err));
 
     return res.status(201).json({
       message: "Monthly fee submitted",
