@@ -376,8 +376,8 @@ router.get('/monthly-fee/breakdown/:year/:month', async (req, res) => {
     const cached = await redis.get(key);
 
     if (cached) {
-      // console.log(`🔥 Cache HIT: ${key}`);
-      return res.json(JSON.parse(cached));
+      console.log(`🔥 Cache HIT: ${key}`);
+      return res.json(typeof cached === "string" ? JSON.parse(cached) : cached);
     }
 
     const startDate = new Date(`${period}-01`)

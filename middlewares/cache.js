@@ -19,11 +19,11 @@ const cache = (keyGenerator, ttlSeconds) => {
             const cached = await redis.get(key);
 
             if (cached) {
-                // console.log(`🔥 Cache HIT: ${key}`);
+                console.log(`🔥 Cache HIT: ${key}`);
                 return res.json(typeof cached === "string" ? JSON.parse(cached) : cached);
             }
 
-            // console.log(`❄️ Cache MISS: ${key}`);
+            console.log(`❄️ Cache MISS: ${key}`);
 
             // Intercept res.json to save cache
             const originalJson = res.json;
