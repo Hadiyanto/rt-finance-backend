@@ -1,13 +1,20 @@
 const express = require("express");
 const router = express.Router();
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
-const cacheResidents = require("../middlewares/cacheResidents");
+const prisma = require("../lib/prisma"); // Singleton
 const redis = require("../lib/redisClient");
 const auth = require("../middlewares/auth");
+const cache = require("../middlewares/cache");
 
 
-router.get("/residents", auth(["admin", "bendahara"]), async (req, res) => {
+
+// Cache Key for Residents List (Versioned)
+const residentsKey = (req) => {
+  const { page = 1, limit = 50, block = "", search = "" } = req.query;
+  const version = process.env.RESIDENT_CACHE_VERSION || "v1";
+  return `residents:${version}:${page}:${limit}:${block}:${search}`;
+};
+
+router.get("/residents", auth(["admin", "bendahara"]), cache(residentsKey, 86400), async (req, res) => {
   try {
     const {
       page = 1,
@@ -237,7 +244,11 @@ router.get("/blocks", async (req, res) => {
   }
 });
 
-router.get("/houses-number", async (req, res) => {
+// Cache Key Generator for Block Houses
+const blockHousesKey = (req) => `block-houses-structure`;
+
+// Cache for 30 Days (2592000 seconds)
+router.get("/houses-number", cache(blockHousesKey, 2592000), async (req, res) => {
   try {
     const { block } = req.query;
 
@@ -258,7 +269,7 @@ router.get("/houses-number", async (req, res) => {
   }
 });
 
-router.get("/block-houses", async (req, res) => {
+router.get("/block-houses", cache(blockHousesKey, 2592000), async (req, res) => {
   try {
     const residents = await prisma.resident.findMany({
       select: { block: true, houseNumber: true },

@@ -4,11 +4,20 @@ const axios = require("axios");
 const fs = require("fs");
 const Tesseract = require("tesseract.js");
 const cloudinary = require("../config/cloudinary");
-const { PrismaClient } = require("@prisma/client");
-
-const prisma = new PrismaClient();
+const prisma = require("../lib/prisma"); // Singleton
+const redis = require("../lib/redisClient");
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
+
+// Helper: Invalidate breakdown cache
+const invalidateBreakdown = async (dateObj) => {
+  if (!dateObj) return;
+  const year = dateObj.getFullYear();
+  const month = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const key = `breakdown:${year}:${month}`;
+  await redis.del(key);
+  console.log(`🗑️ Invalidate Cache: ${key}`);
+};
 
 function breakdownAmount(total) {
   if (total === 100000) {
@@ -182,6 +191,9 @@ router.post("/monthly-fee", upload.single("image"), async (req, res) => {
       }
     });
 
+    // Invalidate Cache
+    await invalidateBreakdown(finalDate);
+
     return res.json({
       success: true,
       data: saved,
@@ -340,6 +352,9 @@ router.post("/monthly-fee-manual", async (req, res) => {
       },
     });
 
+    // Invalidate Cache
+    await invalidateBreakdown(parsedDate);
+
     return res.status(201).json({
       message: "Monthly fee submitted",
       data: fee,
@@ -355,6 +370,15 @@ router.get('/monthly-fee/breakdown/:year/:month', async (req, res) => {
   try {
     const { year, month } = req.params
     const period = `${year}-${month.padStart(2, '0')}`
+
+    // CACHING LOGIC
+    const key = `breakdown:${year}:${month.padStart(2, '0')}`;
+    const cached = await redis.get(key);
+
+    if (cached) {
+      // console.log(`🔥 Cache HIT: ${key}`);
+      return res.json(JSON.parse(cached));
+    }
 
     const startDate = new Date(`${period}-01`)
     const endDate = new Date(`${period}-31`)
@@ -462,11 +486,21 @@ router.get('/monthly-fee/breakdown/:year/:month', async (req, res) => {
       data.push(row)
     }
 
-    res.json({
+    const responsePayload = {
       period,
       total: data.length,
       data
-    })
+    };
+
+    res.json(responsePayload)
+
+    // SET CACHE (1h for current month, 24h for past)
+    const now = new Date();
+    const isCurrentMonth = now.getFullYear() == year && (now.getMonth() + 1) == parseInt(month);
+    const ttl = isCurrentMonth ? 3600 : 86400;
+
+    await redis.set(key, JSON.stringify(responsePayload), { ex: ttl });
+
   } catch (err) {
     res.status(500).json({ message: err.message })
   }

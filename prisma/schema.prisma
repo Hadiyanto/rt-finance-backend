@@ -82,6 +82,7 @@ model MonthlyFee {
   @@index([block])
   @@index([houseNumber])
   @@index([status])
+  @@index([date])
 }
 
 model CashLedger {

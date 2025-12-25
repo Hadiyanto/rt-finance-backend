@@ -2,9 +2,9 @@ const express = require("express");
 const axios = require("axios");
 const fs = require("fs");
 const Tesseract = require("tesseract.js");
-const { PrismaClient } = require("@prisma/client");
-
-const prisma = new PrismaClient();
+const cloudinary = require("../config/cloudinary");
+const prisma = require("../lib/prisma"); // Singleton
+const redis = require("../lib/redisClient"); // For invalidation
 const router = express.Router();
 
 // ===============================
@@ -139,6 +139,14 @@ router.post("/cron/run-ocr", async (req, res) => {
           },
         });
 
+        // Invalidate Cache for this month
+        const date = job.date;
+        if (date) {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, "0");
+          await redis.del(`breakdown:${year}:${month}`);
+        }
+
         processed++;
       } catch (err) {
         await prisma.monthlyFee.update({
@@ -222,6 +230,12 @@ router.post('/cron/release-deferred-v1/:date', async (req, res) => {
           }
         })
       })
+
+      // Invalidate Cache for Release Month
+      if (processed > 0) {
+        const [y, m] = RELEASE_MONTH.split('-');
+        await redis.del(`breakdown:${y}:${m}`);
+      }
 
       processed++
     }
