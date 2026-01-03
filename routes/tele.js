@@ -6,132 +6,136 @@ const router = express.Router();
 const prisma = new PrismaClient();
 require('dotenv').config()
 
-const bot = new Telegraf(process.env.BOT_TOKEN)
+// ============================================================
+// DEFENSIVE: Cek BOT_TOKEN sebelum inisialisasi
+// ============================================================
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+let bot = null;
 
-// Middleware untuk logging (opsional)
-bot.use(async (ctx, next) => {
-  // console.log("Tele Update:", ctx.updateType);
-  await next();
-});
+if (BOT_TOKEN) {
+  bot = new Telegraf(BOT_TOKEN);
 
-bot.start((ctx) => ctx.reply('Halo! Bot RT sudah aktif 😊\nGunakan /myid untuk mengetahui ID chat ini.'))
+  // Middleware untuk logging (opsional)
+  bot.use(async (ctx, next) => {
+    await next();
+  });
 
-bot.help((ctx) => ctx.reply('Gunakan /start atau kirim pesan biasa.'))
+  bot.start((ctx) => ctx.reply('Halo! Bot RT sudah aktif 😊\nGunakan /myid untuk mengetahui ID chat ini.'))
 
-bot.command('myid', (ctx) => {
-  ctx.reply(`Chat ID Anda: \`${ctx.chat.id}\``, { parse_mode: 'Markdown' })
-});
+  bot.help((ctx) => ctx.reply('Gunakan /start atau kirim pesan biasa.'))
 
-bot.on('text', async (ctx) => {
-  const text = ctx.message.text;
-  console.log(`[Tele] Pesan dari ${ctx.from.first_name}: ${text}`);
+  bot.command('myid', (ctx) => {
+    ctx.reply(`Chat ID Anda: \`${ctx.chat.id}\``, { parse_mode: 'Markdown' })
+  });
 
-  // CEK APAKAH INI REPLY DARI REQUEST MANUAL INPUT
-  const replyMsg = ctx.message.reply_to_message;
-  if (replyMsg && replyMsg.caption && replyMsg.caption.includes("ID:")) {
-    // Regex untuk ambil ID dari caption: "ID: #123"
-    const match = replyMsg.caption.match(/ID: #(\d+)/);
-    if (match) {
-      const feeId = parseInt(match[1]);
-      const amountStr = text.replace(/\D/g, ''); // Ambil angka saja
-      const amount = parseInt(amountStr);
+  bot.on('text', async (ctx) => {
+    const text = ctx.message.text;
+    console.log(`[Tele] Pesan dari ${ctx.from.first_name}: ${text}`);
 
-      if (!amount || amount < 1000) {
-        return ctx.reply("❌ Nominal tidak valid. Masukkan angka saja (min 1000).");
+    // CEK APAKAH INI REPLY DARI REQUEST MANUAL INPUT
+    const replyMsg = ctx.message.reply_to_message;
+    if (replyMsg && replyMsg.caption && replyMsg.caption.includes("ID:")) {
+      const match = replyMsg.caption.match(/ID: #(\d+)/);
+      if (match) {
+        const feeId = parseInt(match[1]);
+        const amountStr = text.replace(/\D/g, '');
+        const amount = parseInt(amountStr);
+
+        if (!amount || amount < 1000) {
+          return ctx.reply("❌ Nominal tidak valid. Masukkan angka saja (min 1000).");
+        }
+
+        try {
+          await prisma.monthlyFee.update({
+            where: { id: feeId },
+            data: {
+              amount: amount,
+              status: "COMPLETED",
+              notes: `Manual input by ${ctx.from.first_name}`
+            }
+          });
+
+          await ctx.reply(`✅ Data Updated! ID: ${feeId}\n💰 Nominal: Rp ${amount.toLocaleString('id-ID')}\nStatus: COMPLETED`);
+        } catch (err) {
+          console.error("Manual update error:", err);
+          ctx.reply("❌ Gagal update database.");
+        }
+        return;
       }
-
-      try {
-        await prisma.monthlyFee.update({
-          where: { id: feeId },
-          data: {
-            amount: amount,
-            status: "COMPLETED", // Auto completed karena input manual admin
-            notes: `Manual input by ${ctx.from.first_name}`
-          }
-        });
-
-        await ctx.reply(`✅ Data Updated! ID: ${feeId}\n💰 Nominal: Rp ${amount.toLocaleString('id-ID')}\nStatus: COMPLETED`);
-      } catch (err) {
-        console.error("Manual update error:", err);
-        ctx.reply("❌ Gagal update database.");
-      }
-      return;
     }
-  }
+  });
 
-  // Default response (optional)
-  // ctx.reply(`Pesan diterima: ${ctx.message.text}`) 
-})
+  // ============================================================
+  // ADMIN APPROVAL ACTION HANDLERS
+  // ============================================================
 
-// ============================================================
-// ADMIN APPROVAL ACTION HANDLERS
-// ============================================================
+  bot.action(/^approve_(\d+)$/, async (ctx) => {
+    const feeId = parseInt(ctx.match[1]);
 
-// ACTION: APPROVE
-bot.action(/^approve_(\d+)$/, async (ctx) => {
-  const feeId = parseInt(ctx.match[1]);
+    try {
+      await prisma.monthlyFee.update({
+        where: { id: feeId },
+        data: { status: 'COMPLETED' }
+      });
 
-  try {
-    // 1. Update DB
-    const updated = await prisma.monthlyFee.update({
-      where: { id: feeId },
-      data: { status: 'COMPLETED' }
-    });
+      await ctx.editMessageCaption(
+        `${ctx.callbackQuery.message.caption}\n\n✅ *APPROVED* by ${ctx.from.first_name}`,
+        { parse_mode: 'Markdown' }
+      );
 
-    // 2. Edit Message (Remove UI Buttons)
-    await ctx.editMessageCaption(
-      `${ctx.callbackQuery.message.caption}\n\n✅ *APPROVED* by ${ctx.from.first_name}`,
-      { parse_mode: 'Markdown' }
-    );
+      await ctx.answerCbQuery("Data berhasil diapprove!");
 
-    await ctx.answerCbQuery("Data berhasil diapprove!");
+    } catch (error) {
+      console.error("Approve Error:", error);
+      await ctx.answerCbQuery("Gagal mengupdate data.");
+    }
+  });
 
-  } catch (error) {
-    console.error("Approve All Error:", error);
-    await ctx.answerCbQuery("Gagal mengupdate data.");
-  }
-});
+  bot.action(/^reject_(\d+)$/, async (ctx) => {
+    const feeId = parseInt(ctx.match[1]);
 
-// ACTION: REJECT
-bot.action(/^reject_(\d+)$/, async (ctx) => {
-  const feeId = parseInt(ctx.match[1]);
+    try {
+      await prisma.monthlyFee.update({
+        where: { id: feeId },
+        data: { status: 'REJECTED' }
+      });
 
-  try {
-    // 1. Update DB
-    const updated = await prisma.monthlyFee.update({
-      where: { id: feeId },
-      data: { status: 'REJECTED' }
-    });
+      await ctx.editMessageCaption(
+        `${ctx.callbackQuery.message.caption}\n\n❌ *REJECTED* by ${ctx.from.first_name}`,
+        { parse_mode: 'Markdown' }
+      );
 
-    // 2. Edit Message
-    await ctx.editMessageCaption(
-      `${ctx.callbackQuery.message.caption}\n\n❌ *REJECTED* by ${ctx.from.first_name}`,
-      { parse_mode: 'Markdown' }
-    );
+      await ctx.answerCbQuery("Data ditolak.");
 
-    await ctx.answerCbQuery("Data ditolak.");
+    } catch (error) {
+      console.error("Reject Error:", error);
+      await ctx.answerCbQuery("Gagal menolak data.");
+    }
+  });
 
-  } catch (error) {
-    console.error("Reject Error:", error);
-    await ctx.answerCbQuery("Gagal menolak data.");
-  }
-});
+  // Start Bot
+  bot.launch().then(() => {
+    console.log('🤖 Telegram Bot Started');
+  }).catch(err => console.error("Bot launch failed:", err));
 
+  // Enable graceful stop
+  process.once('SIGINT', () => bot.stop('SIGINT'))
+  process.once('SIGTERM', () => bot.stop('SIGTERM'))
 
-// Start Bot
-bot.launch().then(() => {
-  console.log('🤖 Telegram Bot Started');
-}).catch(err => console.error("Bot launch failed:", err));
-
-// Enable graceful stop
-process.once('SIGINT', () => bot.stop('SIGINT'))
-process.once('SIGTERM', () => bot.stop('SIGTERM'))
+} else {
+  console.warn("⚠️ BOT_TOKEN not set, Telegram Bot is DISABLED.");
+}
 
 
 // ============================================================
 // EXPORT HELPER UNTUK MODULE LAIN
 // ============================================================
 const sendApprovalRequest = async (data) => {
+  if (!bot) {
+    console.warn("⚠️ Bot not initialized, skipping approval request.");
+    return;
+  }
+
   const chatId = process.env.TELEGRAM_CHAT_ID;
   if (!chatId) {
     console.warn("⚠️ TELEGRAM_CHAT_ID not set, skipping notification.");
@@ -166,6 +170,11 @@ Mohon konfirmasi validitas transfer ini.
 };
 
 const sendManualInputRequest = async (data) => {
+  if (!bot) {
+    console.warn("⚠️ Bot not initialized, skipping manual input request.");
+    return;
+  }
+
   const chatId = process.env.TELEGRAM_CHAT_ID;
   if (!chatId) return;
 
@@ -181,11 +190,9 @@ Bot tidak dapat membaca nominal dari gambar.
 👉 *Silakan Reply pesan ini dengan nominal yang benar (angka saja).*
 `;
 
-    // Menggunakan ForceReply agar user langsung diarahkan reply
     await bot.telegram.sendPhoto(chatId, data.imageUrl, {
       caption: caption,
-      parse_mode: 'Markdown',
-      reply_markup: { unforce_reply: true } // Opsi, atau biarkan user manual reply
+      parse_mode: 'Markdown'
     });
   } catch (e) {
     console.error("Failed to send manual input request:", e);
