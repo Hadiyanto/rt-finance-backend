@@ -11,5 +11,6 @@ router.use(require("./cron"));
 router.use(require("./cashLedger"));
 router.use(require("./deferredSubscription"));
 router.use("/sheet", require("./sheet"));
+router.use("/tele", require("./tele").router);
 
 module.exports = router;

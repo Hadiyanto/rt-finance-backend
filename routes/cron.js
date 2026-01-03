@@ -2,9 +2,9 @@ const express = require("express");
 const axios = require("axios");
 const fs = require("fs");
 const Tesseract = require("tesseract.js");
-const cloudinary = require("../config/cloudinary");
 const prisma = require("../lib/prisma"); // Singleton
 const redis = require("../lib/redisClient"); // For invalidation
+const { sendApprovalRequest, sendManualInputRequest } = require("./tele");
 const router = express.Router();
 
 // ===============================
@@ -129,15 +129,23 @@ router.post("/cron/run-ocr", async (req, res) => {
 
         fs.unlinkSync(tmpPath);
 
-        await prisma.monthlyFee.update({
+        const status = amount ? "WAITING_APPROVAL" : "WAITING_MANUAL_INPUT";
+
+        const updated = await prisma.monthlyFee.update({
           where: { id: job.id },
           data: {
             rawText,
-            amount,
-            status: amount ? "COMPLETED" : "FAILED",
+            amount: amount || undefined, // Jangan set null explicit jika undefined
+            status: status,
             attempt: { increment: 1 },
           },
         });
+
+        if (status === "WAITING_APPROVAL") {
+          sendApprovalRequest(updated).catch(e => console.error("Tele error", e));
+        } else if (status === "WAITING_MANUAL_INPUT") {
+          sendManualInputRequest(updated).catch(e => console.error("Tele error input", e));
+        }
 
         // Invalidate Cache for this month
         const date = job.date;
