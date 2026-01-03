@@ -419,7 +419,8 @@ router.get('/monthly-fee/breakdown/:year/:month', async (req, res) => {
         date: {
           gte: startDate,
           lt: endDate
-        }
+        },
+        status: "APPROVED"
       },
       select: {
         block: true,
