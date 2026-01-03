@@ -41,8 +41,8 @@ if (BOT_TOKEN) {
         const amountStr = text.replace(/\D/g, '');
         const amount = parseInt(amountStr);
 
-        if (!amount || amount < 1000) {
-          return ctx.reply("❌ Nominal tidak valid. Masukkan angka saja (min 1000).");
+        if (!amount || amount < 100000) {
+          return ctx.reply("❌ Nominal tidak valid. Masukkan angka saja (min 100000).");
         }
 
         try {
