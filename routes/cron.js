@@ -129,7 +129,8 @@ router.post("/cron/run-ocr", async (req, res) => {
 
         fs.unlinkSync(tmpPath);
 
-        const status = (amount && amount >= 100000) ? "WAITING_APPROVAL" : "WAITING_MANUAL_INPUT";
+        const validAmounts = [100000, 186000, 210000];
+        const status = validAmounts.includes(amount) ? "WAITING_APPROVAL" : "WAITING_MANUAL_INPUT";
 
         const updated = await prisma.monthlyFee.update({
           where: { id: job.id },
