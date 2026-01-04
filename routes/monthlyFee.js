@@ -549,29 +549,47 @@ router.get("/monthly-fee/pending-submission", async (req, res) => {
       }
     });
 
-    // Group by period
-    const grouped = {};
-    let totalAmount = 0;
+    // Group by period and separate late vs on-time
+    const currentPeriod = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+
+    let onTimeRecords = [];
+    let lateRecords = [];
+    let onTimeAmount = 0;
+    let lateAmount = 0;
 
     pending.forEach(fee => {
-      const period = fee.date.toISOString().slice(0, 7); // "2026-01"
-      if (!grouped[period]) {
-        grouped[period] = [];
-      }
-      grouped[period].push({
+      const feePeriod = fee.date.toISOString().slice(0, 7);
+      const isLate = feePeriod < currentPeriod;
+
+      const record = {
         id: fee.id,
         block: fee.block,
         houseNumber: fee.houseNumber,
         fullName: fee.fullName,
-        amount: fee.amount
-      });
-      totalAmount += fee.amount || 0;
+        period: feePeriod,
+        amount: fee.amount,
+        isLate
+      };
+
+      if (isLate) {
+        lateRecords.push(record);
+        lateAmount += fee.amount || 0;
+      } else {
+        onTimeRecords.push(record);
+        onTimeAmount += fee.amount || 0;
+      }
     });
 
     res.json({
-      totalRecords: pending.length,
-      totalAmount,
-      periods: grouped
+      currentPeriod,
+      summary: {
+        totalRecords: pending.length,
+        totalAmount: onTimeAmount + lateAmount,
+        onTime: { count: onTimeRecords.length, amount: onTimeAmount },
+        late: { count: lateRecords.length, amount: lateAmount }
+      },
+      onTimeRecords,
+      lateRecords
     });
 
   } catch (err) {
