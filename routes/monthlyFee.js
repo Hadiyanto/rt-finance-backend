@@ -534,11 +534,7 @@ router.get("/monthly-fee/pending-submission", async (req, res) => {
         rwSubmissionId: null,
         ...dateFilter
       },
-      orderBy: [
-        { date: 'asc' },
-        { block: 'asc' },
-        { houseNumber: 'asc' }
-      ],
+      orderBy: { id: 'asc' },
       select: {
         id: true,
         block: true,
@@ -550,7 +546,11 @@ router.get("/monthly-fee/pending-submission", async (req, res) => {
     });
 
     // Group by period and separate late vs on-time
-    const currentPeriod = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    // Use requested period or default to current month
+    const reqPeriod = (year && month)
+      ? `${year}-${String(month).padStart(2, '0')}`
+      : `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const submissionPeriod = reqPeriod;
 
     let onTimeRecords = [];
     let lateRecords = [];
@@ -559,7 +559,7 @@ router.get("/monthly-fee/pending-submission", async (req, res) => {
 
     pending.forEach(fee => {
       const feePeriod = fee.date.toISOString().slice(0, 7);
-      const isLate = feePeriod < currentPeriod;
+      const isLate = feePeriod < submissionPeriod;
 
       const record = {
         id: fee.id,
@@ -581,7 +581,7 @@ router.get("/monthly-fee/pending-submission", async (req, res) => {
     });
 
     res.json({
-      currentPeriod,
+      submissionPeriod,
       summary: {
         totalRecords: pending.length,
         totalAmount: onTimeAmount + lateAmount,
