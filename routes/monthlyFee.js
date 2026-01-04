@@ -554,7 +554,12 @@ router.get("/monthly-fee/pending-submission", async (req, res) => {
       return parseInt(a.houseNumber) - parseInt(b.houseNumber);
     });
 
-    // Group by period and separate late vs on-time
+    // Get existing RWSubmission periods to determine late status
+    const existingSubmissions = await prisma.rWSubmission.findMany({
+      select: { period: true }
+    });
+    const submittedPeriods = new Set(existingSubmissions.map(s => s.period));
+
     // Use requested period or default to current month
     const reqPeriod = (year && month)
       ? `${year}-${String(month).padStart(2, '0')}`
@@ -568,7 +573,8 @@ router.get("/monthly-fee/pending-submission", async (req, res) => {
 
     pending.forEach(fee => {
       const feePeriod = fee.date.toISOString().slice(0, 7);
-      const isLate = feePeriod < submissionPeriod;
+      // Late if RWSubmission already exists for this period (should've been included before)
+      const isLate = submittedPeriods.has(feePeriod);
 
       const record = {
         id: fee.id,
