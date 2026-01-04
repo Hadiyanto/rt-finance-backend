@@ -741,4 +741,141 @@ router.get("/monthly-fee/rw-submissions/:id", async (req, res) => {
   }
 });
 
+// GET: Payment history for resident(s) with date range
+// Usage: /monthly-fee/history?block=B1&houseNumber=11&startYear=2025&startMonth=1&endYear=2025&endMonth=12
+// Or for all: /monthly-fee/history?startYear=2025&startMonth=1&endYear=2025&endMonth=12
+router.get("/monthly-fee/history", async (req, res) => {
+  try {
+    const { block, houseNumber, startYear, startMonth, endYear, endMonth } = req.query;
+
+    if (!startYear || !startMonth || !endYear || !endMonth) {
+      return res.status(400).json({
+        message: "startYear, startMonth, endYear, endMonth are required"
+      });
+    }
+
+    // Build resident filter
+    let residentFilter = {};
+    if (block && houseNumber) {
+      residentFilter = { block, houseNumber };
+    } else if (block) {
+      residentFilter = { block };
+    }
+
+    // Generate list of months in range
+    const months = [];
+    let current = new Date(parseInt(startYear), parseInt(startMonth) - 1, 1);
+    const end = new Date(parseInt(endYear), parseInt(endMonth) - 1, 1);
+
+    while (current <= end) {
+      months.push({
+        year: current.getFullYear(),
+        month: current.getMonth() + 1,
+        period: `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, '0')}`
+      });
+      current.setMonth(current.getMonth() + 1);
+    }
+
+    // Get all payments in range
+    const startDate = new Date(parseInt(startYear), parseInt(startMonth) - 1, 1);
+    const endDate = new Date(parseInt(endYear), parseInt(endMonth), 1);
+
+    const payments = await prisma.monthlyFee.findMany({
+      where: {
+        ...residentFilter,
+        date: {
+          gte: startDate,
+          lt: endDate
+        }
+      },
+      select: {
+        id: true,
+        block: true,
+        houseNumber: true,
+        fullName: true,
+        date: true,
+        status: true,
+        amount: true
+      },
+      orderBy: [
+        { block: 'asc' },
+        { houseNumber: 'asc' },
+        { date: 'asc' }
+      ]
+    });
+
+    // If specific resident requested
+    if (block && houseNumber) {
+      const history = months.map(m => {
+        const payment = payments.find(p => {
+          const pPeriod = p.date.toISOString().slice(0, 7);
+          return pPeriod === m.period;
+        });
+
+        return {
+          period: m.period,
+          month: new Date(m.year, m.month - 1).toLocaleString('id-ID', { month: 'long', year: 'numeric' }),
+          status: payment ? payment.status : 'NOT_PAID',
+          amount: payment ? payment.amount : null,
+          paymentId: payment ? payment.id : null
+        };
+      });
+
+      return res.json({
+        block,
+        houseNumber,
+        fullName: payments[0]?.fullName || null,
+        range: `${months[0].period} - ${months[months.length - 1].period}`,
+        history
+      });
+    }
+
+    // If all residents - group by resident
+    const residents = {};
+    payments.forEach(p => {
+      const key = `${p.block}/${p.houseNumber}`;
+      if (!residents[key]) {
+        residents[key] = {
+          block: p.block,
+          houseNumber: p.houseNumber,
+          fullName: p.fullName,
+          payments: []
+        };
+      }
+      residents[key].payments.push(p);
+    });
+
+    // Build history for each resident
+    const result = Object.values(residents).map(r => {
+      const history = months.map(m => {
+        const payment = r.payments.find(p => {
+          const pPeriod = p.date.toISOString().slice(0, 7);
+          return pPeriod === m.period;
+        });
+
+        return {
+          period: m.period,
+          status: payment ? payment.status : 'NOT_PAID'
+        };
+      });
+
+      return {
+        block: r.block,
+        houseNumber: r.houseNumber,
+        fullName: r.fullName,
+        history
+      };
+    });
+
+    res.json({
+      range: `${months[0].period} - ${months[months.length - 1].period}`,
+      totalResidents: result.length,
+      data: result
+    });
+
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;
