@@ -839,13 +839,13 @@ router.get("/monthly-fee/history", async (req, res) => {
     const allResidents = await prisma.resident.findMany({
       where: residentWhere,
       select: {
+        id: true,
         block: true,
         houseNumber: true,
         fullName: true
       },
       orderBy: [
-        { block: 'asc' },
-        { houseNumber: 'asc' }
+        { id: 'asc' }
       ]
     });
 
