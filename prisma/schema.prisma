@@ -77,6 +77,10 @@ model MonthlyFee {
   errorMessage String?
   attempt      Int      @default(0)
 
+  // RW Submission tracking
+  rwSubmissionId String?
+  rwSubmission   RWSubmission? @relation(fields: [rwSubmissionId], references: [id])
+
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -84,6 +88,18 @@ model MonthlyFee {
   @@index([houseNumber])
   @@index([status])
   @@index([date])
+  @@index([rwSubmissionId])
+}
+
+model RWSubmission {
+  id          String       @id @default(cuid())
+  period      String       // "2026-01" (periode setoran)
+  totalAmount Int
+  submittedAt DateTime
+  notes       String?
+  createdAt   DateTime     @default(now())
+
+  monthlyFees MonthlyFee[]
 }
 
 model CashLedger {
