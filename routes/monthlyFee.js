@@ -534,7 +534,10 @@ router.get("/monthly-fee/pending-submission", async (req, res) => {
         rwSubmissionId: null,
         ...dateFilter
       },
-      orderBy: { id: 'asc' },
+      orderBy: [
+        { block: 'asc' },
+        { houseNumber: 'asc' }
+      ],
       select: {
         id: true,
         block: true,
@@ -543,6 +546,12 @@ router.get("/monthly-fee/pending-submission", async (req, res) => {
         date: true,
         amount: true
       }
+    });
+
+    // Sort by block (natural) then houseNumber (numeric)
+    pending.sort((a, b) => {
+      if (a.block !== b.block) return a.block.localeCompare(b.block);
+      return parseInt(a.houseNumber) - parseInt(b.houseNumber);
     });
 
     // Group by period and separate late vs on-time
