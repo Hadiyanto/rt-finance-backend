@@ -3,8 +3,13 @@ const express = require("express");
 // const financeRoutes = require("./routes/finance");
 const apiRoutes = require("./routes/api");
 const app = express();
+const swaggerUi = require('swagger-ui-express');
+const swaggerDocument = require('./swagger.json');
+
+
 const port = process.env.PORT || 3000;
 const cors = require("cors");
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

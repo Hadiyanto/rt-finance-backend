@@ -25,6 +25,7 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.2",
     "openai": "^6.10.0",
+    "swagger-ui-express": "^5.0.1",
     "telegraf": "^4.16.3",
     "tesseract.js": "^7.0.0"
   },

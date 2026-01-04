@@ -58,21 +58,6 @@ router.post('/deferred-subscription', async (req, res) => {
         }
       })
 
-      // 2️⃣ INSERT LEDGER (PREPAID / DEFERRED)
-      await tx.cashLedger.create({
-        data: {
-          type: 'IN',
-          amount: totalAmount,
-          bucket: 'DEFERRED',
-          balance: null, // 🔥 WAJIB NULL
-          description: `Iuran dibayar di muka - Blok ${block} No ${houseNumber}`,
-          date: new Date(),
-          source: 'MONTHLY_FEE',
-          sourceRef: subscription.id,
-          createdBy: req.user?.id || 'system'
-        }
-      })
-
       return subscription
     })
 

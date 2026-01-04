@@ -830,25 +830,42 @@ router.get("/monthly-fee/history", async (req, res) => {
       });
     }
 
-    // If all residents - group by resident
-    const residents = {};
+    // If all residents - fetch from Resident table first
+    let residentWhere = {};
+    if (block) {
+      residentWhere = { block };
+    }
+
+    const allResidents = await prisma.resident.findMany({
+      where: residentWhere,
+      select: {
+        block: true,
+        houseNumber: true,
+        fullName: true
+      },
+      orderBy: [
+        { block: 'asc' },
+        { houseNumber: 'asc' }
+      ]
+    });
+
+    // Create payment lookup map
+    const paymentMap = {};
     payments.forEach(p => {
       const key = `${p.block}/${p.houseNumber}`;
-      if (!residents[key]) {
-        residents[key] = {
-          block: p.block,
-          houseNumber: p.houseNumber,
-          fullName: p.fullName,
-          payments: []
-        };
+      if (!paymentMap[key]) {
+        paymentMap[key] = [];
       }
-      residents[key].payments.push(p);
+      paymentMap[key].push(p);
     });
 
     // Build history for each resident
-    const result = Object.values(residents).map(r => {
+    const result = allResidents.map(r => {
+      const key = `${r.block}/${r.houseNumber}`;
+      const residentPayments = paymentMap[key] || [];
+
       const history = months.map(m => {
-        const payment = r.payments.find(p => {
+        const payment = residentPayments.find(p => {
           const pPeriod = p.date.toISOString().slice(0, 7);
           return pPeriod === m.period;
         });

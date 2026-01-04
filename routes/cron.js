@@ -213,18 +213,25 @@ router.post('/cron/release-deferred-v1/:date', async (req, res) => {
       }
 
       await prisma.$transaction(async (tx) => {
-        // 1️⃣ INSERT LEDGER (DEFERRED EVENT LOG)
-        await tx.cashLedger.create({
+        // 1️⃣ INSERT MONTHLY FEE (from DEFERRED)
+        // Get resident name
+        const resident = await tx.resident.findFirst({
+          where: { block: sub.block, houseNumber: sub.houseNumber },
+          select: { fullName: true }
+        });
+
+        const [year, month] = RELEASE_MONTH.split('-').map(Number);
+        const feeDate = new Date(year, month - 1, 1);
+
+        await tx.monthlyFee.create({
           data: {
-            type: 'OUT', // 🔥 hanya event log
-            amount: sub.monthlyAmount,
-            bucket: 'DEFERRED',
-            balance: null, // 🔥 WAJIB NULL
-            description: `Iuran ${getMonthYearLabel(RELEASE_MONTH)} - Blok ${sub.block} No ${sub.houseNumber}`,
-            date: now,
-            source: 'MONTHLY_FEE',
-            sourceRef: sub.id,
-            createdBy: 'cron'
+            block: sub.block,
+            houseNumber: sub.houseNumber,
+            fullName: resident?.fullName || `${sub.block}/${sub.houseNumber}`,
+            date: feeDate,
+            amount: sub.monthlyAmount === 200000 ? 210000 : sub.monthlyAmount,
+            status: 'COMPLETED',
+            notes: 'from DEFERRED'
           }
         })
 

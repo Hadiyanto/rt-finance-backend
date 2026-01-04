@@ -1,0 +1,1000 @@
+{
+    "openapi": "3.0.0",
+    "info": {
+        "title": "RT Finance Backend API",
+        "description": "API Documentation for RT Finance Management System",
+        "version": "1.0.0"
+    },
+    "servers": [
+        {
+            "url": "http://localhost:3000/api",
+            "description": "Local Development"
+        },
+        {
+            "url": "https://rt-finance-backend.vercel.app/api",
+            "description": "Production"
+        }
+    ],
+    "components": {
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT"
+            }
+        }
+    },
+    "paths": {
+        "/login": {
+            "post": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Login user",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "email": {
+                                        "type": "string"
+                                    },
+                                    "password": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "email",
+                                    "password"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Login success with JWT token"
+                    },
+                    "400": {
+                        "description": "Invalid credentials"
+                    }
+                }
+            }
+        },
+        "/auth/validate": {
+            "get": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Validate JWT token",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Token is valid"
+                    },
+                    "401": {
+                        "description": "Unauthorized"
+                    }
+                }
+            }
+        },
+        "/auth/hash/{password}": {
+            "get": {
+                "tags": [
+                    "Auth"
+                ],
+                "summary": "Generate password hash (dev only)",
+                "parameters": [
+                    {
+                        "name": "password",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Returns hashed password"
+                    }
+                }
+            }
+        },
+        "/residents": {
+            "get": {
+                "tags": [
+                    "Residents"
+                ],
+                "summary": "List all residents",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "page",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 1
+                        }
+                    },
+                    {
+                        "name": "limit",
+                        "in": "query",
+                        "schema": {
+                            "type": "integer",
+                            "default": 50
+                        }
+                    },
+                    {
+                        "name": "block",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "search",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated list of residents"
+                    }
+                }
+            }
+        },
+        "/residents/{id}": {
+            "get": {
+                "tags": [
+                    "Residents"
+                ],
+                "summary": "Get resident by ID",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Resident details"
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "Residents"
+                ],
+                "summary": "Update resident by ID",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "fullName": {
+                                        "type": "string"
+                                    },
+                                    "occupancyType": {
+                                        "type": "string"
+                                    },
+                                    "houseStatus": {
+                                        "type": "string"
+                                    },
+                                    "notes": {
+                                        "type": "string"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Resident updated"
+                    }
+                }
+            }
+        },
+        "/residents/{block}/{houseNumber}": {
+            "get": {
+                "tags": [
+                    "Residents"
+                ],
+                "summary": "Get resident by block and house number",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "block",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "houseNumber",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Resident details"
+                    }
+                }
+            },
+            "put": {
+                "tags": [
+                    "Residents"
+                ],
+                "summary": "Update resident by block and house number",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "block",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "houseNumber",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Resident updated"
+                    }
+                }
+            }
+        },
+        "/blocks": {
+            "get": {
+                "tags": [
+                    "Residents"
+                ],
+                "summary": "List all unique blocks",
+                "responses": {
+                    "200": {
+                        "description": "Array of block names"
+                    }
+                }
+            }
+        },
+        "/houses-number": {
+            "get": {
+                "tags": [
+                    "Residents"
+                ],
+                "summary": "List house numbers by block",
+                "parameters": [
+                    {
+                        "name": "block",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Array of house numbers"
+                    }
+                }
+            }
+        },
+        "/block-houses": {
+            "get": {
+                "tags": [
+                    "Residents"
+                ],
+                "summary": "Get all blocks with their house numbers",
+                "responses": {
+                    "200": {
+                        "description": "Block-houses structure"
+                    }
+                }
+            }
+        },
+        "/transaction-types": {
+            "get": {
+                "tags": [
+                    "Finance"
+                ],
+                "summary": "List all transaction types",
+                "responses": {
+                    "200": {
+                        "description": "Array of transaction types"
+                    }
+                }
+            }
+        },
+        "/categories": {
+            "get": {
+                "tags": [
+                    "Finance"
+                ],
+                "summary": "List all categories",
+                "responses": {
+                    "200": {
+                        "description": "Array of categories with type"
+                    }
+                }
+            }
+        },
+        "/finance": {
+            "get": {
+                "tags": [
+                    "Finance"
+                ],
+                "summary": "List all finance entries",
+                "responses": {
+                    "200": {
+                        "description": "Array of finance entries"
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Finance"
+                ],
+                "summary": "Create finance entry",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "amount": {
+                                        "type": "integer"
+                                    },
+                                    "description": {
+                                        "type": "string"
+                                    },
+                                    "categoryId": {
+                                        "type": "integer"
+                                    },
+                                    "typeId": {
+                                        "type": "integer"
+                                    },
+                                    "date": {
+                                        "type": "string",
+                                        "format": "date"
+                                    }
+                                },
+                                "required": [
+                                    "amount",
+                                    "categoryId",
+                                    "typeId"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Entry created"
+                    }
+                }
+            }
+        },
+        "/cash-ledger": {
+            "get": {
+                "tags": [
+                    "Cash Ledger"
+                ],
+                "summary": "List all ledger entries",
+                "responses": {
+                    "200": {
+                        "description": "Array of ledger entries"
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Cash Ledger"
+                ],
+                "summary": "Create ledger entry",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {
+                                        "type": "string",
+                                        "enum": [
+                                            "IN",
+                                            "OUT"
+                                        ]
+                                    },
+                                    "amount": {
+                                        "type": "integer"
+                                    },
+                                    "description": {
+                                        "type": "string"
+                                    },
+                                    "date": {
+                                        "type": "string",
+                                        "format": "date"
+                                    },
+                                    "bucket": {
+                                        "type": "string",
+                                        "enum": [
+                                            "CASH",
+                                            "DEFERRED"
+                                        ]
+                                    },
+                                    "source": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "type",
+                                    "amount",
+                                    "description"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Entry created"
+                    }
+                }
+            }
+        },
+        "/cash-ledger/import-csv": {
+            "post": {
+                "tags": [
+                    "Cash Ledger"
+                ],
+                "summary": "Import ledger from CSV",
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "file": {
+                                        "type": "string",
+                                        "format": "binary"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "CSV imported"
+                    }
+                }
+            }
+        },
+        "/balance": {
+            "get": {
+                "tags": [
+                    "Cash Ledger"
+                ],
+                "summary": "Get current cash balance",
+                "responses": {
+                    "200": {
+                        "description": "Current balance"
+                    }
+                }
+            }
+        },
+        "/monthly-fee/submit": {
+            "post": {
+                "tags": [
+                    "Monthly Fee"
+                ],
+                "summary": "Submit monthly fee with image",
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "block": {
+                                        "type": "string"
+                                    },
+                                    "houseNumber": {
+                                        "type": "string"
+                                    },
+                                    "fullName": {
+                                        "type": "string"
+                                    },
+                                    "date": {
+                                        "type": "string"
+                                    },
+                                    "file": {
+                                        "type": "string",
+                                        "format": "binary"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Fee submitted"
+                    }
+                }
+            }
+        },
+        "/monthly-fee/list": {
+            "get": {
+                "tags": [
+                    "Monthly Fee"
+                ],
+                "summary": "List all monthly fees",
+                "parameters": [
+                    {
+                        "name": "status",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "block",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of fees"
+                    }
+                }
+            }
+        },
+        "/monthly-fee/breakdown/{year}/{month}": {
+            "get": {
+                "tags": [
+                    "Monthly Fee"
+                ],
+                "summary": "Get monthly breakdown report",
+                "parameters": [
+                    {
+                        "name": "year",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "month",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Breakdown data"
+                    }
+                }
+            }
+        },
+        "/monthly-fee/pending-submission": {
+            "get": {
+                "tags": [
+                    "Monthly Fee - RW Submission"
+                ],
+                "summary": "List fees pending RW submission",
+                "parameters": [
+                    {
+                        "name": "year",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "month",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Grouped pending fees"
+                    }
+                }
+            }
+        },
+        "/monthly-fee/submit-to-rw": {
+            "post": {
+                "tags": [
+                    "Monthly Fee - RW Submission"
+                ],
+                "summary": "Submit fees to RW",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "ids": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "integer"
+                                        }
+                                    },
+                                    "period": {
+                                        "type": "string",
+                                        "example": "2026-01"
+                                    },
+                                    "notes": {
+                                        "type": "string"
+                                    }
+                                },
+                                "required": [
+                                    "ids",
+                                    "period"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Submission created"
+                    }
+                }
+            }
+        },
+        "/monthly-fee/rw-submissions": {
+            "get": {
+                "tags": [
+                    "Monthly Fee - RW Submission"
+                ],
+                "summary": "List all RW submissions",
+                "parameters": [
+                    {
+                        "name": "year",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "month",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "List of submissions"
+                    }
+                }
+            }
+        },
+        "/monthly-fee/rw-submissions/{id}": {
+            "get": {
+                "tags": [
+                    "Monthly Fee - RW Submission"
+                ],
+                "summary": "Get RW submission detail",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Submission detail with isLate flag"
+                    }
+                }
+            }
+        },
+        "/monthly-fee/history": {
+            "get": {
+                "tags": [
+                    "Monthly Fee"
+                ],
+                "summary": "Payment history for resident(s)",
+                "parameters": [
+                    {
+                        "name": "startYear",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "startMonth",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "endYear",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "endMonth",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "block",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    {
+                        "name": "houseNumber",
+                        "in": "query",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Payment history per month"
+                    }
+                }
+            }
+        },
+        "/deferred-subscription": {
+            "get": {
+                "tags": [
+                    "Deferred Subscription"
+                ],
+                "summary": "List all deferred subscriptions",
+                "responses": {
+                    "200": {
+                        "description": "Array of subscriptions"
+                    }
+                }
+            },
+            "post": {
+                "tags": [
+                    "Deferred Subscription"
+                ],
+                "summary": "Create deferred subscription (prepaid)",
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "block": {
+                                        "type": "string"
+                                    },
+                                    "houseNumber": {
+                                        "type": "string"
+                                    },
+                                    "totalAmount": {
+                                        "type": "integer"
+                                    },
+                                    "monthlyAmount": {
+                                        "type": "integer"
+                                    },
+                                    "startMonth": {
+                                        "type": "string",
+                                        "example": "2026-01"
+                                    },
+                                    "endMonth": {
+                                        "type": "string",
+                                        "example": "2026-12"
+                                    }
+                                },
+                                "required": [
+                                    "block",
+                                    "houseNumber",
+                                    "totalAmount",
+                                    "monthlyAmount",
+                                    "startMonth",
+                                    "endMonth"
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Subscription created"
+                    }
+                }
+            }
+        },
+        "/deferred-subscription/active": {
+            "get": {
+                "tags": [
+                    "Deferred Subscription"
+                ],
+                "summary": "List active subscriptions only",
+                "responses": {
+                    "200": {
+                        "description": "Array of active subscriptions"
+                    }
+                }
+            }
+        },
+        "/deferred-subscription/{id}/deactivate": {
+            "patch": {
+                "tags": [
+                    "Deferred Subscription"
+                ],
+                "summary": "Deactivate subscription",
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Subscription deactivated"
+                    }
+                }
+            }
+        },
+        "/cron/run-ocr": {
+            "post": {
+                "tags": [
+                    "Cron"
+                ],
+                "summary": "Run OCR batch processing",
+                "description": "Requires x-cron-secret header",
+                "parameters": [
+                    {
+                        "name": "x-cron-secret",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OCR processed"
+                    }
+                }
+            }
+        },
+        "/cron/release-deferred-v1/{date}": {
+            "post": {
+                "tags": [
+                    "Cron"
+                ],
+                "summary": "Release deferred subscriptions for month",
+                "description": "Requires x-cron-secret header",
+                "parameters": [
+                    {
+                        "name": "date",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        },
+                        "example": "2026-01"
+                    },
+                    {
+                        "name": "x-cron-secret",
+                        "in": "header",
+                        "required": true,
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Deferred released"
+                    }
+                }
+            }
+        }
+    }
+}
