@@ -6,6 +6,7 @@ const Tesseract = require("tesseract.js");
 const cloudinary = require("../config/cloudinary");
 const prisma = require("../lib/prisma"); // Singleton
 const redis = require("../lib/redisClient");
+const auth = require("../middlewares/auth");
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
 
@@ -504,5 +505,240 @@ router.get('/monthly-fee/breakdown/:year/:month', async (req, res) => {
     res.status(500).json({ message: err.message })
   }
 })
+
+// ============================================================
+// RW SUBMISSION ENDPOINTS
+// ============================================================
+
+// GET: List pending submission (COMPLETED but not submitted to RW)
+router.get("/monthly-fee/pending-submission", async (req, res) => {
+  try {
+    const { year, month } = req.query;
+
+    // Build date filter if year/month provided
+    let dateFilter = {};
+    if (year && month) {
+      const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+      const endDate = new Date(parseInt(year), parseInt(month), 1);
+      dateFilter = {
+        date: {
+          gte: startDate,
+          lt: endDate
+        }
+      };
+    }
+
+    const pending = await prisma.monthlyFee.findMany({
+      where: {
+        status: "COMPLETED",
+        rwSubmissionId: null,
+        ...dateFilter
+      },
+      orderBy: [
+        { date: 'asc' },
+        { block: 'asc' },
+        { houseNumber: 'asc' }
+      ],
+      select: {
+        id: true,
+        block: true,
+        houseNumber: true,
+        fullName: true,
+        date: true,
+        amount: true
+      }
+    });
+
+    // Group by period
+    const grouped = {};
+    let totalAmount = 0;
+
+    pending.forEach(fee => {
+      const period = fee.date.toISOString().slice(0, 7); // "2026-01"
+      if (!grouped[period]) {
+        grouped[period] = [];
+      }
+      grouped[period].push({
+        id: fee.id,
+        block: fee.block,
+        houseNumber: fee.houseNumber,
+        fullName: fee.fullName,
+        amount: fee.amount
+      });
+      totalAmount += fee.amount || 0;
+    });
+
+    res.json({
+      totalRecords: pending.length,
+      totalAmount,
+      periods: grouped
+    });
+
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// POST: Submit to RW (mark as submitted) - requires login
+router.post("/monthly-fee/submit-to-rw", auth(["admin", "bendahara", "RT"]), async (req, res) => {
+  try {
+    const { ids, period, notes } = req.body;
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: "ids array is required" });
+    }
+
+    if (!period) {
+      return res.status(400).json({ message: "period is required (e.g. '2026-01')" });
+    }
+
+    // Get the fees to calculate total
+    const fees = await prisma.monthlyFee.findMany({
+      where: {
+        id: { in: ids },
+        status: "COMPLETED",
+        rwSubmissionId: null
+      }
+    });
+
+    if (fees.length === 0) {
+      return res.status(400).json({ message: "No valid pending fees found for given IDs" });
+    }
+
+    const totalAmount = fees.reduce((sum, f) => sum + (f.amount || 0), 0);
+
+    // Create RWSubmission
+    const submission = await prisma.rWSubmission.create({
+      data: {
+        period,
+        totalAmount,
+        submittedAt: new Date(),
+        notes: notes || null,
+        monthlyFees: {
+          connect: fees.map(f => ({ id: f.id }))
+        }
+      },
+      include: {
+        monthlyFees: {
+          select: {
+            id: true,
+            block: true,
+            houseNumber: true,
+            amount: true
+          }
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      message: `${fees.length} records submitted to RW`,
+      submission: {
+        id: submission.id,
+        period: submission.period,
+        totalAmount: submission.totalAmount,
+        submittedAt: submission.submittedAt,
+        records: submission.monthlyFees
+      }
+    });
+
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET: List all RW submissions
+router.get("/monthly-fee/rw-submissions", async (req, res) => {
+  try {
+    const { year, month } = req.query;
+
+    // Build period filter if year/month provided
+    let periodFilter = {};
+    if (year && month) {
+      const period = `${year}-${String(month).padStart(2, '0')}`; // "2026-01"
+      periodFilter = { period };
+    } else if (year) {
+      periodFilter = { period: { startsWith: year } }; // "2026"
+    }
+
+    const submissions = await prisma.rWSubmission.findMany({
+      where: periodFilter,
+      orderBy: { submittedAt: 'desc' },
+      include: {
+        _count: {
+          select: { monthlyFees: true }
+        }
+      }
+    });
+
+    res.json({
+      total: submissions.length,
+      data: submissions.map(s => ({
+        id: s.id,
+        period: s.period,
+        totalAmount: s.totalAmount,
+        submittedAt: s.submittedAt,
+        notes: s.notes,
+        recordCount: s._count.monthlyFees
+      }))
+    });
+
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET: Detail of a specific RW submission
+router.get("/monthly-fee/rw-submissions/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const submission = await prisma.rWSubmission.findUnique({
+      where: { id },
+      include: {
+        monthlyFees: {
+          select: {
+            id: true,
+            block: true,
+            houseNumber: true,
+            fullName: true,
+            date: true,
+            amount: true
+          },
+          orderBy: [
+            { block: 'asc' },
+            { houseNumber: 'asc' }
+          ]
+        }
+      }
+    });
+
+    if (!submission) {
+      return res.status(404).json({ message: "Submission not found" });
+    }
+
+    // Check for late submissions
+    const records = submission.monthlyFees.map(fee => {
+      const feePeriod = fee.date.toISOString().slice(0, 7);
+      return {
+        ...fee,
+        feePeriod,
+        isLate: feePeriod !== submission.period
+      };
+    });
+
+    res.json({
+      id: submission.id,
+      period: submission.period,
+      totalAmount: submission.totalAmount,
+      submittedAt: submission.submittedAt,
+      notes: submission.notes,
+      records
+    });
+
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
 
 module.exports = router;
