@@ -88,7 +88,7 @@ router.get("/residents/:id", auth(["admin", "bendahara"]), async (req, res) => {
 });
 
 // Get resident by block + houseNumber
-router.get("/residents/:block/:houseNumber", auth(["admin", "bendahara"]), async (req, res) => {
+router.get("/residents/:block/:houseNumber"), async (req, res) => {
   try {
     const { block, houseNumber } = req.params;
 
