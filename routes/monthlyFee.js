@@ -495,9 +495,7 @@ router.get('/monthly-fee/breakdown/:year/:month', async (req, res) => {
     res.json(responsePayload)
 
     // SET CACHE (1h for current month, 24h for past)
-    const now = new Date();
-    const isCurrentMonth = now.getFullYear() == year && (now.getMonth() + 1) == parseInt(month);
-    const ttl = isCurrentMonth ? 3600 : 86400;
+    const ttl = 300;
 
     await redis.set(key, JSON.stringify(responsePayload), { ex: ttl });
 
