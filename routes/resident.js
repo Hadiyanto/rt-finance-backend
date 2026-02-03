@@ -14,7 +14,7 @@ const residentsKey = (req) => {
   return `residents:${version}:${page}:${limit}:${block}:${search}`;
 };
 
-router.get("/residents", auth(["admin", "bendahara"]), cache(residentsKey, 86400), async (req, res) => {
+router.get("/residents", cache(residentsKey, 86400), async (req, res) => {
   try {
     const {
       page = 1,
