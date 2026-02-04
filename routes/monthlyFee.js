@@ -926,4 +926,151 @@ router.get("/monthly-fee/history", async (req, res) => {
   }
 });
 
+/**
+ * =========================================================
+ * GET MONTHLY FEES WAITING FOR APPROVAL/MANUAL INPUT
+ * =========================================================
+ * Query params:
+ * - status (optional): WAITING_APPROVAL | WAITING_MANUAL_INPUT
+ * - year (optional): filter by year
+ * - month (optional): filter by month (1-12)
+ */
+router.get("/monthly-fee/pending-approval", async (req, res) => {
+  try {
+    const { status, year, month } = req.query;
+
+    // Build where clause
+    const where = {};
+
+    // Filter by status if provided, otherwise get both
+    if (status && ["WAITING_APPROVAL", "WAITING_MANUAL_INPUT"].includes(status)) {
+      where.status = status;
+    } else {
+      where.status = { in: ["WAITING_APPROVAL", "WAITING_MANUAL_INPUT"] };
+    }
+
+    // Filter by date if year/month provided
+    if (year && month) {
+      const startDate = new Date(parseInt(year), parseInt(month) - 1, 1);
+      const endDate = new Date(parseInt(year), parseInt(month), 1);
+      where.date = {
+        gte: startDate,
+        lt: endDate
+      };
+    } else if (year) {
+      const startDate = new Date(parseInt(year), 0, 1);
+      const endDate = new Date(parseInt(year) + 1, 0, 1);
+      where.date = {
+        gte: startDate,
+        lt: endDate
+      };
+    }
+
+    const fees = await prisma.monthlyFee.findMany({
+      where,
+      orderBy: [
+        { date: 'desc' },
+        { block: 'asc' },
+        { houseNumber: 'asc' }
+      ],
+      select: {
+        id: true,
+        block: true,
+        houseNumber: true,
+        fullName: true,
+        date: true,
+        amount: true,
+        imageUrl: true,
+        status: true,
+        rawText: true,
+        notes: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
+
+    // Group by status
+    const waitingApproval = fees.filter(f => f.status === 'WAITING_APPROVAL');
+    const waitingManualInput = fees.filter(f => f.status === 'WAITING_MANUAL_INPUT');
+
+    res.json({
+      total: fees.length,
+      summary: {
+        waitingApproval: waitingApproval.length,
+        waitingManualInput: waitingManualInput.length
+      },
+      data: fees
+    });
+
+  } catch (err) {
+    console.error("Error fetching pending approvals:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+/**
+ * =========================================================
+ * PATCH UPDATE MONTHLY FEE STATUS TO COMPLETED
+ * =========================================================
+ * Body:
+ * - amount (optional): if updating from WAITING_MANUAL_INPUT
+ */
+router.patch("/monthly-fee/:id/complete", auth(["admin", "bendahara"]), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { amount } = req.body;
+
+    // Check if entry exists
+    const fee = await prisma.monthlyFee.findUnique({
+      where: { id: parseInt(id) },
+    });
+
+    if (!fee) {
+      return res.status(404).json({
+        message: "Monthly fee not found",
+      });
+    }
+
+    // Validate status
+    if (!["WAITING_APPROVAL", "WAITING_MANUAL_INPUT"].includes(fee.status)) {
+      return res.status(400).json({
+        message: `Cannot complete fee with status ${fee.status}`,
+      });
+    }
+
+    // If WAITING_MANUAL_INPUT, amount is required
+    if (fee.status === "WAITING_MANUAL_INPUT" && !amount) {
+      return res.status(400).json({
+        message: "amount is required for WAITING_MANUAL_INPUT status",
+      });
+    }
+
+    // Update data
+    const updateData = {
+      status: "COMPLETED",
+    };
+
+    // Update amount if provided
+    if (amount) {
+      updateData.amount = parseInt(amount);
+    }
+
+    const updated = await prisma.monthlyFee.update({
+      where: { id: parseInt(id) },
+      data: updateData,
+    });
+
+    // Invalidate cache
+    await invalidateBreakdown(updated.date);
+
+    res.json({
+      message: "Monthly fee marked as completed",
+      data: updated,
+    });
+  } catch (err) {
+    console.error("Error completing monthly fee:", err);
+    res.status(500).json({ message: "Failed to complete monthly fee" });
+  }
+});
+
 module.exports = router;
