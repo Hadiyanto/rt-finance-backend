@@ -28,4 +28,11 @@ app.get("/health", (req, res) => {
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
+
+  // Initialize WhatsApp service
+  const { getWhatsAppService } = require('./services/whatsappService');
+  const waService = getWhatsAppService();
+  waService.initialize().catch(err => {
+    console.error('WhatsApp initialization failed:', err);
+  });
 });
