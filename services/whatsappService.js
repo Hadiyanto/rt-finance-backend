@@ -26,7 +26,6 @@ class WhatsAppService {
             this.sock = makeWASocket({
                 version,
                 logger: this.logger,
-                printQRInTerminal: true,
                 auth: state,
                 browser: ['GMM 001', 'Chrome', '1.0.0'],
             });
