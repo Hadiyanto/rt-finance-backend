@@ -58,6 +58,16 @@ model FinanceEntry {
   typeId      Int
   category    Category        @relation(fields: [categoryId], references: [id])
   type        TransactionType @relation(fields: [typeId], references: [id])
+  
+  status      String          @default("PENDING") // PENDING | APPROVED | REJECTED
+  approvedBy  Int?
+  approvedAt  DateTime?
+  
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  
+  @@index([status])
+  @@index([date])
 }
 
 model MonthlyFee {

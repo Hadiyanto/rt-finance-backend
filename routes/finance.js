@@ -52,15 +52,26 @@ router.get("/categories", async (req, res) => {
  * =========================================================
  * GET ALL FINANCE ENTRIES
  * =========================================================
+ * Query params:
+ * - status (optional): PENDING | APPROVED | REJECTED
  */
 router.get("/finance", async (req, res) => {
   try {
+    const { status } = req.query;
+
+    // Build where clause
+    const where = {};
+    if (status && ["PENDING", "APPROVED", "REJECTED"].includes(status)) {
+      where.status = status;
+    }
+
     const entries = await prisma.financeEntry.findMany({
+      where,
       include: {
         category: true,
         type: true,
       },
-      orderBy: { id: "asc" },
+      orderBy: { date: "desc" }, // newest first
     });
 
     res.json({
@@ -115,6 +126,62 @@ router.post("/finance", auth(["admin", "bendahara"]), async (req, res) => {
   } catch (err) {
     console.error("Error creating finance entry:", err);
     res.status(500).json({ message: "Failed to create finance entry" });
+  }
+});
+
+/**
+ * =========================================================
+ * PATCH UPDATE FINANCE ENTRY STATUS (APPROVE/REJECT)
+ * =========================================================
+ * Expected body:
+ * {
+ *   "status": "APPROVED" // or "REJECTED"
+ * }
+ */
+router.patch("/finance/:id/status", auth(["admin", "bendahara"]), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const userId = req.user.id; // from JWT middleware
+
+    if (!status || !["APPROVED", "REJECTED"].includes(status)) {
+      return res.status(400).json({
+        message: "status harus APPROVED atau REJECTED",
+      });
+    }
+
+    // Check if entry exists
+    const entry = await prisma.financeEntry.findUnique({
+      where: { id: parseInt(id) },
+    });
+
+    if (!entry) {
+      return res.status(404).json({
+        message: "Finance entry tidak ditemukan",
+      });
+    }
+
+    // Update status
+    const updatedEntry = await prisma.financeEntry.update({
+      where: { id: parseInt(id) },
+      data: {
+        status,
+        approvedBy: userId,
+        approvedAt: new Date(),
+      },
+      include: {
+        category: true,
+        type: true,
+      },
+    });
+
+    res.json({
+      message: `Finance entry ${status.toLowerCase()}`,
+      data: updatedEntry,
+    });
+  } catch (err) {
+    console.error("Error updating finance entry status:", err);
+    res.status(500).json({ message: "Failed to update finance entry status" });
   }
 });
 
