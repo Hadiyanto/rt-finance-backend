@@ -83,12 +83,13 @@ router.get("/finance", async (req, res) => {
  *   "description": "Pembelian sapu",
  *   "categoryId": 4,
  *   "typeId": 2,
- *   "date": "2025-01-12"
+ *   "date": "2025-01-12",
+ *   "imageUrl": "https://example.com/image.jpg"
  * }
  */
 router.post("/finance", auth(["admin", "bendahara"]), async (req, res) => {
   try {
-    const { amount, description, categoryId, typeId, date } = req.body;
+    const { amount, description, categoryId, typeId, date, imageUrl } = req.body;
 
     if (!amount || !categoryId || !typeId) {
       return res.status(400).json({
@@ -103,6 +104,7 @@ router.post("/finance", auth(["admin", "bendahara"]), async (req, res) => {
         categoryId,
         typeId,
         date: date ? new Date(date) : new Date(),
+        imageUrl,
       },
     });
 
