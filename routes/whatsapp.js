@@ -9,7 +9,7 @@ const prisma = require("../lib/prisma");
  * Get QR code for WhatsApp connection
  * Admin only
  */
-router.get("/whatsapp/qr", auth, async (req, res) => {
+router.get("/whatsapp/qr", auth(), async (req, res) => {
     try {
         // Check if user is admin
         if (req.user.role !== 'admin' && req.user.role !== 'bendahara') {
@@ -31,7 +31,7 @@ router.get("/whatsapp/qr", auth, async (req, res) => {
  * Regenerate QR code (logout and start new session)
  * Admin only
  */
-router.post("/whatsapp/regenerate", auth, async (req, res) => {
+router.post("/whatsapp/regenerate", auth(), async (req, res) => {
     try {
         // Check if user is admin
         if (req.user.role !== 'admin' && req.user.role !== 'bendahara') {
@@ -53,7 +53,7 @@ router.post("/whatsapp/regenerate", auth, async (req, res) => {
  * Get WhatsApp connection status
  * Admin only
  */
-router.get("/whatsapp/status", auth, async (req, res) => {
+router.get("/whatsapp/status", auth(), async (req, res) => {
     try {
         // Check if user is admin
         if (req.user.role !== 'admin' && req.user.role !== 'bendahara') {
@@ -75,7 +75,7 @@ router.get("/whatsapp/status", auth, async (req, res) => {
  * Get list of residents with phone numbers for sending messages
  * Admin only
  */
-router.get("/whatsapp/contacts", auth, async (req, res) => {
+router.get("/whatsapp/contacts", auth(), async (req, res) => {
     try {
         // Check if user is admin
         if (req.user.role !== 'admin' && req.user.role !== 'bendahara') {
@@ -126,7 +126,7 @@ router.get("/whatsapp/contacts", auth, async (req, res) => {
  *   "message": "Your message here"
  * }
  */
-router.post("/whatsapp/send", auth, async (req, res) => {
+router.post("/whatsapp/send", auth(), async (req, res) => {
     try {
         // Check if user is admin
         if (req.user.role !== 'admin' && req.user.role !== 'bendahara') {
