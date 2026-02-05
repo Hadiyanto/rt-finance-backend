@@ -23,6 +23,7 @@ model Resident {
   block         String
   houseNumber   String
   fullName      String
+  phoneNumber   String?
   occupancyType String
   houseStatus   String
   notes         String?

@@ -113,10 +113,10 @@ router.get("/residents/:block/:houseNumber", async (req, res) => {
 router.put("/residents/:id", auth(["admin", "bendahara"]), async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { fullName, occupancyType, houseStatus, notes } = req.body;
+    const { fullName, phoneNumber, occupancyType, houseStatus, notes } = req.body;
 
     // Minimal 1 field harus ada
-    if (!fullName && !occupancyType && !houseStatus && !notes) {
+    if (!fullName && !phoneNumber && !occupancyType && !houseStatus && !notes) {
       return res.status(400).json({
         error: "At least one field must be provided for update."
       });
@@ -128,6 +128,7 @@ router.put("/residents/:id", auth(["admin", "bendahara"]), async (req, res) => {
       },
       data: {
         fullName,
+        phoneNumber,
         occupancyType,
         houseStatus,
         notes
@@ -157,10 +158,10 @@ router.put("/residents/:id", auth(["admin", "bendahara"]), async (req, res) => {
 router.put("/residents/:block/:houseNumber", auth(["admin", "bendahara"]), async (req, res) => {
   try {
     const { block, houseNumber } = req.params;
-    const { fullName, occupancyType, houseStatus, notes } = req.body;
+    const { fullName, phoneNumber, occupancyType, houseStatus, notes } = req.body;
 
     // Minimal 1 field harus ada
-    if (!fullName && !occupancyType && !houseStatus && !notes) {
+    if (!fullName && !phoneNumber && !occupancyType && !houseStatus && !notes) {
       return res.status(400).json({
         error: "At least one field must be provided for update."
       });
@@ -175,6 +176,7 @@ router.put("/residents/:block/:houseNumber", auth(["admin", "bendahara"]), async
       },
       data: {
         fullName,
+        phoneNumber,
         occupancyType,
         houseStatus,
         notes
