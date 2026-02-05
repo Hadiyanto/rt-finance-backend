@@ -85,10 +85,10 @@ router.get("/whatsapp/contacts", auth(), async (req, res) => {
         // Get all residents with phone numbers from database
         const residents = await prisma.resident.findMany({
             where: {
-                phoneNumber: {
-                    not: null,
-                    not: '',
-                }
+                AND: [
+                    { phoneNumber: { not: null } },
+                    { phoneNumber: { not: '' } }
+                ]
             },
             select: {
                 id: true,
