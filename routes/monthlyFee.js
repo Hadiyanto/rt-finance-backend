@@ -611,7 +611,7 @@ router.get("/monthly-fee/pending-submission", async (req, res) => {
 });
 
 // POST: Submit to RW (mark as submitted) - requires login
-router.post("/monthly-fee/submit-to-rw", auth(["admin", "bendahara", "RT"]), async (req, res) => {
+router.post("/monthly-fee/submit-to-rw", auth(["admin", "bendahara"]), async (req, res) => {
   try {
     const { ids, period, notes } = req.body;
 
