@@ -88,7 +88,14 @@ router.get("/residents/:id", auth(["admin", "bendahara"]), async (req, res) => {
 });
 
 // Get resident by block + houseNumber
-router.get("/residents/:block/:houseNumber", async (req, res) => {
+// Cache key generator for single resident
+const residentKey = (req) => {
+  const { block, houseNumber } = req.params;
+  return `resident:${block}:${houseNumber}`;
+};
+
+// Get resident by block + houseNumber (Cached 1 Year)
+router.get("/residents/:block/:houseNumber", cache(residentKey, 31536000), async (req, res) => {
   try {
     const { block, houseNumber } = req.params;
 
@@ -199,29 +206,6 @@ router.put("/residents/:block/:houseNumber", auth(["admin", "bendahara"]), async
     }
 
     return res.status(500).json({ error: "Failed to update resident" });
-  }
-});
-
-// Get resident by block + houseNumber
-router.get("/residents/:block/:houseNumber", auth(["admin", "bendahara"]), async (req, res) => {
-  try {
-    const { block, houseNumber } = req.params;
-
-    const resident = await prisma.resident.findUnique({
-      where: {
-        block_houseNumber: { block, houseNumber }
-      }
-    });
-
-    if (!resident) {
-      return res.status(404).json({ error: "Resident not found" });
-    }
-
-    res.json(resident);
-
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ error: "Failed to fetch resident" });
   }
 });
 
