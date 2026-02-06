@@ -27,6 +27,10 @@ router.get("/auth/validate", auth(["admin", "bendahara", "RT"]), async (req, res
   }
 });
 
+router.get("/auth/check", auth(), async (req, res) => {
+  res.json({ valid: true, user: req.user });
+});
+
 router.post("/login", async (req, res) => {
   const { email, password } = req.body;
 
@@ -49,7 +53,7 @@ router.post("/login", async (req, res) => {
       role: user.role,
     },
     process.env.JWT_SECRET,
-    { expiresIn: "12h" }
+    { expiresIn: "30d" }
   );
 
   res.json({
