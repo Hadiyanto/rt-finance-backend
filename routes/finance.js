@@ -2,8 +2,23 @@ const express = require("express");
 const router = express.Router();
 const { PrismaClient } = require("@prisma/client");
 const auth = require("../middlewares/auth");
+const cache = require("../middlewares/cache");
+const redis = require("../lib/redisClient"); // Use Redis for manual clearing
 
 const prisma = new PrismaClient();
+
+// Helper to clear finance list caches
+const clearFinanceCache = async () => {
+  try {
+    const keys = await redis.keys("finance:list:*");
+    if (keys.length > 0) {
+      await redis.del(keys);
+      console.log("Cleared finance caches:", keys);
+    }
+  } catch (err) {
+    console.error("Error clearing finance cache:", err);
+  }
+};
 
 /**
  * =========================================================
@@ -55,7 +70,15 @@ router.get("/categories", async (req, res) => {
  * Query params:
  * - status (optional): PENDING | APPROVED | REJECTED
  */
-router.get("/finance", async (req, res) => {
+// Cache key generator: finance:list:[status] or finance:list:all
+const financeListKey = (req) => {
+  const { status } = req.query;
+  const suffix = status ? status.toLowerCase() : "all";
+  return `finance:list:${suffix}`;
+};
+
+// Cache for 1 hour (3600 seconds)
+router.get("/finance", cache(financeListKey, 3600), async (req, res) => {
   try {
     const { status } = req.query;
 
@@ -88,15 +111,6 @@ router.get("/finance", async (req, res) => {
  * =========================================================
  * POST SUBMIT FINANCE ENTRY
  * =========================================================
- * Expected body:
- * {
- *   "amount": 50000,
- *   "description": "Pembelian sapu",
- *   "categoryId": 4,
- *   "typeId": 2,
- *   "date": "2025-01-12",
- *   "imageUrl": "https://example.com/image.jpg"
- * }
  */
 router.post("/finance", auth(["admin", "bendahara"]), async (req, res) => {
   try {
@@ -119,6 +133,9 @@ router.post("/finance", auth(["admin", "bendahara"]), async (req, res) => {
       },
     });
 
+    // Clear cache after creation
+    await clearFinanceCache();
+
     res.json({
       message: "Finance entry created",
       data: entry,
@@ -133,10 +150,6 @@ router.post("/finance", auth(["admin", "bendahara"]), async (req, res) => {
  * =========================================================
  * PATCH UPDATE FINANCE ENTRY STATUS (APPROVE/REJECT)
  * =========================================================
- * Expected body:
- * {
- *   "status": "APPROVED" // or "REJECTED"
- * }
  */
 router.patch("/finance/:id/status", auth(["admin", "bendahara"]), async (req, res) => {
   try {
@@ -174,6 +187,9 @@ router.patch("/finance/:id/status", auth(["admin", "bendahara"]), async (req, re
         type: true,
       },
     });
+
+    // Clear cache after update
+    await clearFinanceCache();
 
     res.json({
       message: `Finance entry ${status.toLowerCase()}`,
