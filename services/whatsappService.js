@@ -47,7 +47,8 @@ class WhatsAppService {
                     this.qr = null;
 
                     if (shouldReconnect) {
-                        setTimeout(() => this.initialize(), 3000);
+                        console.log('Connection closed. Will retry in 1 hour...');
+                        setTimeout(() => this.initialize(), 3600000); // 1 hour delay
                     }
                 } else if (connection === 'open') {
                     console.log('WhatsApp Connected!');
