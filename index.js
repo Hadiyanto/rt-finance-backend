@@ -2,6 +2,7 @@ const express = require("express");
 // const sheetRoutes = require("./routes/sheet");
 // const financeRoutes = require("./routes/finance");
 const apiRoutes = require("./routes/api");
+const prisma = require("./lib/prisma");
 const app = express();
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('./swagger.json');
@@ -22,8 +23,23 @@ app.use(cors({
 
 app.use("/api", apiRoutes);
 
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
+app.get("/health", async (req, res) => {
+  try {
+    const category = await prisma.category.findUnique({
+      where: {
+        id: 1,
+      },
+    });
+
+    if (!category || category.name !== "Operasional") {
+      return res.status(500).json({ status: "error", message: "Health check failed: Category 1 matches 'Operasional' check failed" });
+    }
+
+    res.json({ status: "ok", db: "connected", data: category });
+  } catch (error) {
+    console.error("Health check error:", error);
+    res.status(500).json({ status: "error", message: error.message });
+  }
 });
 
 app.listen(port, () => {
