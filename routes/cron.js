@@ -142,11 +142,11 @@ router.post("/cron/run-ocr", async (req, res) => {
           },
         });
 
-        if (status === "WAITING_APPROVAL") {
-          sendApprovalRequest(updated).catch(e => console.error("Tele error", e));
-        } else if (status === "WAITING_MANUAL_INPUT") {
-          sendManualInputRequest(updated).catch(e => console.error("Tele error input", e));
-        }
+        // if (status === "WAITING_APPROVAL") {
+        //   sendApprovalRequest(updated).catch(e => console.error("Tele error", e));
+        // } else if (status === "WAITING_MANUAL_INPUT") {
+        //   sendManualInputRequest(updated).catch(e => console.error("Tele error input", e));
+        // }
 
         // Invalidate Cache for this month
         const date = job.date;

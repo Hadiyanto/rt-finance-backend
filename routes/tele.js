@@ -675,13 +675,13 @@ Apakah data sudah benar?
   });
 
   // Start Bot
-  bot.launch().then(() => {
-    console.log('🤖 Telegram Bot Started');
-  }).catch(err => console.error("Bot launch failed:", err));
+  // bot.launch().then(() => {
+  //   console.log('🤖 Telegram Bot Started');
+  // }).catch(err => console.error("Bot launch failed:", err));
 
   // Enable graceful stop
-  process.once('SIGINT', () => bot.stop('SIGINT'))
-  process.once('SIGTERM', () => bot.stop('SIGTERM'))
+  // process.once('SIGINT', () => bot.stop('SIGINT'))
+  // process.once('SIGTERM', () => bot.stop('SIGTERM'))
 
 } else {
   console.warn("⚠️ BOT_TOKEN not set, Telegram Bot is DISABLED.");
