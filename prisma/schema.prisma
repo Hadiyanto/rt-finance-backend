@@ -102,6 +102,27 @@ model MonthlyFee {
   @@index([rwSubmissionId])
 }
 
+model Thr {
+  id           Int      @id @default(autoincrement())
+  block        String
+  houseNumber  String
+  fullName     String
+  date         DateTime
+  notes        String?
+  amount       Int?     
+  imageUrl     String?
+  status       String   @default("PENDING") // PENDING | COMPLETED | FAILED
+  errorMessage String?
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([block])
+  @@index([houseNumber])
+  @@index([status])
+  @@index([date])
+}
+
 model RWSubmission {
   id          String       @id @default(cuid())
   period      String       // "2026-01" (periode setoran)
@@ -192,6 +213,7 @@ enum CashType {
 enum CashSource {
   MANUAL
   MONTHLY_FEE
+  THR
   DONATION
   OTHER
 }

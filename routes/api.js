@@ -9,6 +9,7 @@ router.use(require("./uploadDrive"));
 router.use(require("./monthlyFee"));
 router.use(require("./cron"));
 router.use(require("./cashLedger"));
+router.use(require("./thr"));
 router.use(require("./deferredSubscription"));
 router.use(require("./whatsapp"));
 router.use(require("./unpaidResidents"));
