@@ -1,8 +1,37 @@
 const express = require("express");
 const router = express.Router();
 const { PrismaClient } = require("@prisma/client");
+const { Pool } = require("pg");
+require("dotenv").config();
 
 const prisma = new PrismaClient();
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+    console.error("CRITICAL: DATABASE_URL environment variable is missing!");
+}
+
+const pool = new Pool({
+    connectionString,
+    ssl: { rejectUnauthorized: false }, // Required by some cloud DB platforms including Supabase
+});
+
+// Generic transaction wrapper that provides a safe PoolClient
+const transaction = async (callback) => {
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+        const result = await callback(client);
+        await client.query("COMMIT");
+        return result;
+    } catch (e) {
+        await client.query("ROLLBACK");
+        throw e;
+    } finally {
+        client.release();
+    }
+};
 
 /**
  * =========================================================
@@ -34,48 +63,67 @@ router.post("/thr-manual", async (req, res) => {
 
         const paymentDate = new Date(Date.UTC(targetYear, targetMonth - 1, 1, 0, 0, 0, 0));
 
-        // Validasi apakah THR untuk rumah dan bulan ini sudah dibayar/pending
-        const existingThr = await prisma.thr.findFirst({
-            where: {
+        // Validasi dan Insert menggunakan pg.transaction untuk mencegah race conditions
+        const result = await transaction(async (client) => {
+            // 1. Cek apakah THR untuk rumah dan bulan ini sudah dibayar/pending dengan FOR UPDATE (Row-level lock)
+            // Note: Prisma schema uses `Thr` with Capital T, underlying postgres table might be `"Thr"` (quoted)
+            // Let's check table name quoting. We'll use Prisma to query it safely or raw SQL.
+            // Since we need row locking or at least transaction-level locking, we check using raw pg.
+
+            const checkQuery = `
+                SELECT id, status FROM "Thr" 
+                WHERE block = $1 AND "houseNumber" = $2 AND date = $3 
+                AND status IN ('PENDING', 'COMPLETED', 'WAITING_APPROVAL', 'WAITING_MANUAL_INPUT')
+                FOR UPDATE
+            `;
+            const checkRes = await client.query(checkQuery, [block, houseNumber, paymentDate]);
+
+            if (checkRes.rows.length > 0) {
+                return {
+                    error: true,
+                    code: "THR_ALREADY_SUBMITTED",
+                    message: "THR for this house and year has already been submitted",
+                    data: checkRes.rows[0]
+                };
+            }
+
+            // Determine initial status based on provided data
+            let initialStatus = "PENDING";
+
+            // 2. Insert record baru
+            const insertQuery = `
+                INSERT INTO "Thr" (block, "houseNumber", "fullName", date, "imageUrl", notes, amount, status, attempt, "createdAt", "updatedAt")
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+                RETURNING *
+            `;
+
+            const insertParams = [
                 block,
                 houseNumber,
-                date: paymentDate,
-                status: { in: ["PENDING", "COMPLETED", "WAITING_APPROVAL", "WAITING_MANUAL_INPUT"] }
-            }
+                name,
+                paymentDate,
+                imageUrl || null,
+                notes || null,
+                amount ? parseInt(amount, 10) : null,
+                initialStatus,
+                1 // Manual submission counts as 1st attempt
+            ];
+
+            const insertRes = await client.query(insertQuery, insertParams);
+            return { error: false, data: insertRes.rows[0] };
         });
 
-        if (existingThr) {
+        if (result.error) {
             return res.status(400).json({
-                code: "THR_ALREADY_SUBMITTED",
-                message: "THR for this house and year has already been submitted",
-                data: existingThr
+                code: result.code,
+                message: result.message,
+                data: result.data
             });
         }
 
-        // Determine initial status based on provided data
-        // Default to PENDING. Could be adapted if there's a different flow.
-        let initialStatus = "PENDING";
-
-        // We can also support direct completion if logged in (admin)
-        // but typically manual submissions via frontend go to PENDING
-
-        const newPayment = await prisma.thr.create({
-            data: {
-                block,
-                houseNumber,
-                fullName: name,
-                date: paymentDate,
-                imageUrl: imageUrl || null,
-                notes: notes || null,
-                amount: amount ? parseInt(amount, 10) : null,
-                status: initialStatus,
-                attempt: 1, // Manual submission counts as 1st attempt
-            },
-        });
-
         return res.status(201).json({
             message: "THR manual payment submitted successfully",
-            data: newPayment,
+            data: result.data,
         });
     } catch (err) {
         console.error("Manual THR Error:", err);

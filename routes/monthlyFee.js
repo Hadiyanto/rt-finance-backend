@@ -7,8 +7,37 @@ const cloudinary = require("../config/cloudinary");
 const prisma = require("../lib/prisma"); // Singleton
 const redis = require("../lib/redisClient");
 const auth = require("../middlewares/auth");
+const { Pool } = require("pg");
+require("dotenv").config();
+
 const router = express.Router();
 const upload = multer({ dest: "uploads/" });
+
+const connectionString = process.env.DATABASE_URL;
+
+if (!connectionString) {
+  console.error("CRITICAL: DATABASE_URL environment variable is missing!");
+}
+
+const pool = new Pool({
+  connectionString,
+  ssl: { rejectUnauthorized: false },
+});
+
+const transaction = async (callback) => {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    const result = await callback(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (e) {
+    await client.query("ROLLBACK");
+    throw e;
+  } finally {
+    client.release();
+  }
+};
 
 // Helper: Invalidate breakdown cache
 const invalidateBreakdown = async (dateObj) => {
@@ -299,64 +328,72 @@ router.post("/monthly-fee-manual", async (req, res) => {
     }
 
     // =========================
-    // PARALLEL CHECKS (EXISTING & DEFERRED)
+    // PARALLEL CHECKS (EXISTING & DEFERRED) & INSERT WITH LOCKS
     // =========================
-    const [existingFee, deferred] = await Promise.all([
-      prisma.monthlyFee.findFirst({
-        where: { block, houseNumber, date: parsedDate },
-        select: { id: true } // Optimization: Select only ID
-      }),
-      prisma.deferredSubscription.findFirst({
-        where: { block, houseNumber, isActive: true },
-        select: { id: true } // Optimization: Select only ID
-      })
-    ]);
+    const result = await transaction(async (client) => {
+      const feeCheckQuery = `
+            SELECT id FROM "MonthlyFee"
+            WHERE block = $1 AND "houseNumber" = $2 AND date = $3
+            FOR UPDATE
+        `;
+      const existingFeeRes = await client.query(feeCheckQuery, [block, houseNumber, parsedDate]);
 
-    if (existingFee) {
-      return res.status(409).json({
-        code: "MONTHLY_FEE_ALREADY_SUBMITTED",
-        message: "Monthly fee for this house and month has already been submitted",
-      });
-    }
+      if (existingFeeRes.rows.length > 0) {
+        return {
+          error: true,
+          code: "MONTHLY_FEE_ALREADY_SUBMITTED",
+          message: "Monthly fee for this house and month has already been submitted",
+        };
+      }
 
-    if (deferred) {
-      return res.status(409).json({
-        code: "DEFERRED_ACTIVE",
-        message: "This month is already covered by a prepaid subscription",
-      });
-    }
+      const deferredCheckQuery = `
+            SELECT id FROM "DeferredSubscription"
+            WHERE block = $1 AND "houseNumber" = $2 AND "isActive" = true
+        `;
+      const existingDeferredRes = await client.query(deferredCheckQuery, [block, houseNumber]);
 
-    // =========================
-    // AUTO FULLNAME FROM RESIDENT
-    // =========================
-    // const resident = await prisma.resident.findFirst({
-    //   where: { block, houseNumber },
-    //   select: { fullName: true },
-    // });
+      if (existingDeferredRes.rows.length > 0) {
+        return {
+          error: true,
+          code: "DEFERRED_ACTIVE",
+          message: "This month is already covered by a prepaid subscription"
+        };
+      }
 
-    // const fullName = name?.trim();
+      const insertQuery = `
+            INSERT INTO "MonthlyFee" (block, "houseNumber", "fullName", notes, date, "imageUrl", status, "createdAt", "updatedAt", attempt)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW(), 0)
+            RETURNING *
+        `;
 
-    // =========================
-    // CREATE MONTHLY FEE (FAST)
-    // =========================
-    const fee = await prisma.monthlyFee.create({
-      data: {
+      const insertParams = [
         block,
         houseNumber,
-        fullName: name?.trim() || null,
-        notes: notes?.trim() || null,
-        date: parsedDate,
+        name?.trim() || null,
+        notes?.trim() || null,
+        parsedDate,
         imageUrl,
-        status: "PENDING",
-      },
+        "PENDING"
+      ];
+
+      const insertRes = await client.query(insertQuery, insertParams);
+
+      return { error: false, data: insertRes.rows[0] };
     });
+
+    if (result.error) {
+      return res.status(409).json({
+        code: result.code,
+        message: result.message,
+      });
+    }
 
     // Fire-and-forget Cache Invalidation (Non-blocking)
     invalidateBreakdown(parsedDate).catch(err => console.error("Cache invalidation error:", err));
 
     return res.status(201).json({
       message: "Monthly fee submitted",
-      data: fee,
+      data: result.data,
     });
 
   } catch (err) {

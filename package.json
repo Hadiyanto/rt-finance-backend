@@ -27,6 +27,7 @@
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",
     "openai": "^6.10.0",
+    "pg": "^8.19.0",
     "pino": "^10.3.0",
     "qrcode": "^1.5.4",
     "swagger-ui-express": "^5.0.1",
