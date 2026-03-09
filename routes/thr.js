@@ -169,4 +169,77 @@ router.get("/thr", async (req, res) => {
     }
 });
 
+/**
+ * =========================================================
+ * GET THR REKAP BY YEAR
+ * =========================================================
+ * Returns a list of all residents with their THR payment status
+ * for a specific year.
+ */
+router.get("/thr/rekap/:year", async (req, res) => {
+    try {
+        const { year } = req.params;
+        const targetYear = parseInt(year);
+
+        if (isNaN(targetYear)) {
+            return res.status(400).json({ message: "Invalid year parameter" });
+        }
+
+        const startDate = new Date(Date.UTC(targetYear, 0, 1, 0, 0, 0, 0));
+        const endDate = new Date(Date.UTC(targetYear + 1, 0, 1, 0, 0, 0, 0));
+
+        // Fetch all residents
+        const residents = await prisma.resident.findMany({
+            orderBy: [{ block: "asc" }, { houseNumber: "asc" }]
+        });
+
+        // Fetch THR records for the given year
+        const thrRecords = await prisma.thr.findMany({
+            where: {
+                date: {
+                    gte: startDate,
+                    lt: endDate
+                }
+            }
+        });
+
+        // Map THR records by block and houseNumber
+        const thrMap = {};
+        thrRecords.forEach(record => {
+            const key = `${record.block}-${record.houseNumber}`;
+            // If multiple records exist (e.g., FAILED and COMPLETED), prefer COMPLETED
+            if (!thrMap[key] || record.status === "COMPLETED") {
+                thrMap[key] = record;
+            }
+        });
+
+        // Combine data
+        const rekapData = residents.map(resident => {
+            const key = `${resident.block}-${resident.houseNumber}`;
+            const thr = thrMap[key];
+
+            return {
+                block: resident.block,
+                houseNumber: resident.houseNumber,
+                fullName: resident.fullName,
+                hasPaid: !!(thr && thr.status === 'COMPLETED'),
+                amount: thr && thr.status === 'COMPLETED' ? thr.amount : null,
+                status: thr ? thr.status : null,
+                date: thr ? thr.date : null
+            };
+        });
+
+        return res.json({
+            year: targetYear,
+            totalResidents: residents.length,
+            totalPaid: rekapData.filter(r => r.hasPaid).length,
+            data: rekapData
+        });
+
+    } catch (err) {
+        console.error("Error fetching THR rekap:", err);
+        return res.status(500).json({ message: "Internal server error" });
+    }
+});
+
 module.exports = router;
