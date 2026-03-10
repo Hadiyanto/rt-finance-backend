@@ -208,7 +208,7 @@ router.get("/thr/rekap/:year", async (req, res) => {
         thrRecords.forEach(record => {
             const key = `${record.block}-${record.houseNumber}`;
             // If multiple records exist (e.g., FAILED and COMPLETED), prefer COMPLETED
-            if (!thrMap[key] || record.status === "COMPLETED") {
+            if (!thrMap[key] || record.status.trim() === "COMPLETED") {
                 thrMap[key] = record;
             }
         });
@@ -222,9 +222,9 @@ router.get("/thr/rekap/:year", async (req, res) => {
                 block: resident.block,
                 houseNumber: resident.houseNumber,
                 fullName: resident.fullName,
-                hasPaid: !!(thr && thr.status === 'COMPLETED'),
-                amount: thr && thr.status === 'COMPLETED' ? thr.amount : null,
-                status: thr ? thr.status : null,
+                hasPaid: !!(thr && thr.status.trim() === 'COMPLETED'),
+                amount: thr && thr.status.trim() === 'COMPLETED' ? thr.amount : null,
+                status: thr ? thr.status.trim() : null,
                 date: thr ? thr.date : null
             };
         });
