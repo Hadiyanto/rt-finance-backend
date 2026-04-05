@@ -86,6 +86,30 @@ function breakdownAmount(total) {
     }
   }
 
+  if (total === 150000) {
+    return {
+      kasRT: 0,
+      agamaRT: 0,
+      sampah: 50000,
+      keamanan: 100000,
+      agamaRW: 0,
+      kasRW: 0,
+      kkmRW: 0
+    }
+  }
+
+  if (total === 140000) {
+    return {
+      kasRT: 0,
+      agamaRT: 0,
+      sampah: 40000,
+      keamanan: 100000,
+      agamaRW: 0,
+      kasRW: 0,
+      kkmRW: 0
+    }
+  }
+
   throw new Error(`Unsupported totalAmount: ${total}`)
 }
 
