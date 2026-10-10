@@ -80,7 +80,7 @@ const thrSchema = z.object({
   houseId: z.coerce.number().int().positive(),
   year: z.coerce.number().int().min(2020).max(2100),
   amount: z.coerce.number().int().min(1000, "Nominal THR minimal Rp1.000").max(100_000_000),
-  proofUrl: proofUrlSchema,
+  proofUrl: proofUrlSchema.optional(), // THR boleh tunai tanpa bukti, sama seperti app lama
 });
 
 router.post("/thr", writeLimiter, async (req, res) => {

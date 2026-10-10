@@ -132,7 +132,7 @@ async function createPublicThr({ payerName, houseId, year, amount, proofUrl }) {
       const { rows: [payment] } = await client.query(
         `INSERT INTO payment (payer_name, reported_amount, proof_url, status)
          VALUES ($1, $2, $3, 'PENDING') RETURNING id, status`,
-        [payerName, amount, proofUrl]
+        [payerName, amount, proofUrl ?? null]
       );
       await client.query(
         `INSERT INTO payment_item (payment_id, house_id, kind, period, amount) VALUES ($1, $2, 'THR', $3, $4)`,
