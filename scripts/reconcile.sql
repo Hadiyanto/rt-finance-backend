@@ -53,6 +53,16 @@ SELECT rs.period, rs.total_amount, count(pi.id) AS items, sum(pi.amount) AS sum_
 FROM rw_submission rs LEFT JOIN payment_item pi ON pi.rw_submission_id = rs.id
 GROUP BY rs.id ORDER BY 1;
 
+\echo '== Riwayat kondisi rumah (rumah yang pernah berubah) =='
+SELECT h.block || '/' || h.number AS rumah,
+       string_agg(ho.start_period || ' ' || ho.status, ' → ' ORDER BY ho.start_period) AS riwayat,
+       (SELECT c.status FROM v_house_current c WHERE c.id = h.id) AS sekarang
+FROM house h
+JOIN house_occupancy ho ON ho.house_id = h.id
+GROUP BY h.id, h.block, h.number
+HAVING count(*) > 1
+ORDER BY h.block, h.number;
+
 \echo '== Tarif per rumah (house_fee_plan) =='
 SELECT h.block || '/' || h.number AS rumah,
        string_agg(hfp.start_period || ' ' || coalesce(fp.code, 'TIDAK_DITAGIH'), ' → ' ORDER BY hfp.start_period) AS riwayat_tarif

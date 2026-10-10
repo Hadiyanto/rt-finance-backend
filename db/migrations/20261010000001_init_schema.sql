@@ -24,18 +24,31 @@ CREATE TABLE app_user (
 );
 
 -- Rumah = unit yang ditagih. Riwayat bayar melekat ke rumah, bukan ke orang.
+-- Kondisi rumah (dihuni/kosong, nama, HP) ada di house_occupancy; kondisi terkini lewat v_house_current.
 CREATE TABLE house (
-  id             serial PRIMARY KEY,
-  block          text NOT NULL,
-  number         text NOT NULL,
-  occupant_name  text,  -- penghuni/pemilik saat ini; untuk label & prefill "Nama Pelapor"
-  phone          text,  -- tidak pernah dikirim ke endpoint publik
-  occupancy_type text NOT NULL DEFAULT 'OWNER' CHECK (occupancy_type IN ('OWNER', 'TENANT')),
-  status         text NOT NULL DEFAULT 'OCCUPIED' CHECK (status IN ('OCCUPIED', 'VACANT')),
-  notes          text,
-  created_at     timestamptz NOT NULL DEFAULT now(),
-  updated_at     timestamptz NOT NULL DEFAULT now(),
+  id         serial PRIMARY KEY,
+  block      text NOT NULL,
+  number     text NOT NULL,
+  notes      text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (block, number)
+);
+
+-- Riwayat kondisi rumah. Setiap perubahan (kosong, terisi lagi, ganti pemilik/penghuni) = baris baru,
+-- baris lama tidak diubah, supaya bisa dijawab "sejak kapan kosong, siapa yang mencatat".
+CREATE TABLE house_occupancy (
+  id             serial PRIMARY KEY,
+  house_id       int          NOT NULL REFERENCES house (id),
+  start_period   period_month NOT NULL,
+  status         text NOT NULL CHECK (status IN ('OCCUPIED', 'VACANT')),
+  resident_name  text,         -- penghuni, atau pemilik kalau rumah kosong; label & prefill "Nama Pelapor"
+  phone          text,         -- tidak pernah dikirim ke endpoint publik
+  occupancy_type text CHECK (occupancy_type IN ('OWNER', 'TENANT')),
+  notes          text,         -- mis. 'ganti pemilik'
+  recorded_by    int REFERENCES app_user (id),
+  recorded_at    timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (house_id, start_period)
 );
 
 -- === Tarif ===
@@ -167,6 +180,19 @@ CREATE TRIGGER ledger_entry_updated_at BEFORE UPDATE ON ledger_entry FOR EACH RO
 
 -- === View ===
 
+-- Kondisi terkini per rumah = baris house_occupancy terakhir yang sudah berlaku.
+CREATE VIEW v_house_current AS
+SELECT h.id, h.block, h.number, h.notes,
+       o.status, o.resident_name, o.phone, o.occupancy_type, o.start_period AS status_since
+FROM house h
+LEFT JOIN LATERAL (
+  SELECT ho.*
+  FROM house_occupancy ho
+  WHERE ho.house_id = h.id AND ho.start_period <= to_char(now() AT TIME ZONE 'Asia/Jakarta', 'YYYY-MM')
+  ORDER BY ho.start_period DESC
+  LIMIT 1
+) o ON true;
+
 -- Iuran bulanan yang aktif (belum di-void) per rumah per periode; sumber laporan & grid status.
 CREATE VIEW v_house_period_status AS
 SELECT pi.house_id, pi.period, pi.amount, pi.fee_plan_id, pi.rw_submission_id,
@@ -178,6 +204,7 @@ WHERE pi.kind = 'MONTHLY_FEE' AND pi.voided_at IS NULL;
 -- migrate:down
 
 DROP VIEW v_house_period_status;
+DROP VIEW v_house_current;
 DROP TABLE telegram_chat;
 DROP TABLE ledger_entry;
 DROP TABLE ledger_category;
@@ -187,6 +214,7 @@ DROP TABLE payment;
 DROP TABLE house_fee_plan;
 DROP TABLE fee_plan_component;
 DROP TABLE fee_plan;
+DROP TABLE house_occupancy;
 DROP TABLE house;
 DROP TABLE app_user;
 DROP FUNCTION set_updated_at();

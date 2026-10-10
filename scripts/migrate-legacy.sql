@@ -33,12 +33,19 @@ FROM legacy."User";
 SELECT setval(pg_get_serial_sequence('app_user', 'id'), (SELECT max(id) FROM app_user));
 
 -- === house ===
-INSERT INTO house (block, number, occupant_name, phone, occupancy_type, status, notes, created_at, updated_at)
-SELECT block, "houseNumber", "fullName", "phoneNumber",
-       CASE lower("occupancyType") WHEN 'tenant' THEN 'TENANT' ELSE 'OWNER' END,
-       CASE lower("houseStatus") WHEN 'vacant' THEN 'VACANT' ELSE 'OCCUPIED' END,
-       notes, "createdAt" AT TIME ZONE 'UTC', "updatedAt" AT TIME ZONE 'UTC'
+INSERT INTO house (block, number, notes, created_at, updated_at)
+SELECT block, "houseNumber", notes, "createdAt" AT TIME ZONE 'UTC', "updatedAt" AT TIME ZONE 'UTC'
 FROM legacy."Resident";
+
+-- kondisi awal rumah per 2025-12 (awal app dipakai), dari data Resident
+INSERT INTO house_occupancy (house_id, start_period, status, resident_name, phone, occupancy_type, notes, recorded_at)
+SELECT h.id, '2025-12',
+       CASE lower(r."houseStatus") WHEN 'vacant' THEN 'VACANT' ELSE 'OCCUPIED' END,
+       r."fullName", r."phoneNumber",
+       CASE lower(r."occupancyType") WHEN 'tenant' THEN 'TENANT' ELSE 'OWNER' END,
+       'Migrasi dari data Resident', r."createdAt" AT TIME ZONE 'UTC'
+FROM legacy."Resident" r
+JOIN house h ON h.block = r.block AND h.number = r."houseNumber";
 
 -- === rw_submission ===
 INSERT INTO rw_submission (period, total_amount, submitted_at, notes, legacy_ref)
@@ -83,14 +90,14 @@ FROM seq
 WHERE rn = 1 OR fee_plan_id IS DISTINCT FROM prev_plan;
 
 -- === Rumah kosong menurut laporan bendahara "Pending September" 2026 ===
--- Rumah kosong ditagih keamanan saja (Rp100.000) mulai bulan kosong; status rumah ditandai VACANT.
-CREATE TEMP TABLE vacancy (block text, number text, start_period text) ON COMMIT DROP;
+-- Rumah kosong ditagih keamanan saja (Rp100.000) mulai bulan kosong, dan dicatat di riwayat kondisi rumah.
+CREATE TEMP TABLE vacancy (block text, number text, start_period text, notes text) ON COMMIT DROP;
 INSERT INTO vacancy VALUES
-  ('A1', '4',  '2026-08'),
-  ('A3', '2',  '2026-05'),
-  ('A4', '4',  '2026-08'),
-  ('B1', '10', '2026-09'),
-  ('B1', '28', '2026-09');
+  ('A1', '4',  '2026-08', 'Kosong (laporan bendahara Pending September 2026)'),
+  ('A3', '2',  '2026-05', 'Kosong (laporan bendahara Pending September 2026)'),
+  ('A4', '4',  '2026-08', 'Kosong, ganti pemilik (laporan bendahara Pending September 2026)'),
+  ('B1', '10', '2026-09', 'Kosong (laporan bendahara Pending September 2026)'),
+  ('B1', '28', '2026-09', 'Kosong (laporan bendahara Pending September 2026)');
 
 INSERT INTO house_fee_plan (house_id, start_period, fee_plan_id)
 SELECT h.id, v.start_period, (SELECT id FROM fee_plan WHERE code = 'KEAMANAN_100')
@@ -98,9 +105,16 @@ FROM vacancy v
 JOIN house h ON h.block = v.block AND h.number = v.number
 ON CONFLICT (house_id, start_period) DO UPDATE SET fee_plan_id = EXCLUDED.fee_plan_id;
 
-UPDATE house h SET status = 'VACANT'
+-- nama tetap nama pemilik terakhir yang tercatat (rumah kosong tetap punya pemilik yang membayar)
+INSERT INTO house_occupancy (house_id, start_period, status, resident_name, phone, occupancy_type, notes)
+SELECT h.id, v.start_period, 'VACANT', prev.resident_name, prev.phone, prev.occupancy_type, v.notes
 FROM vacancy v
-WHERE h.block = v.block AND h.number = v.number;
+JOIN house h ON h.block = v.block AND h.number = v.number
+JOIN LATERAL (
+  SELECT * FROM house_occupancy ho
+  WHERE ho.house_id = h.id AND ho.start_period < v.start_period
+  ORDER BY ho.start_period DESC LIMIT 1
+) prev ON true;
 
 -- === Koreksi yang dikonfirmasi bendahara (2026-10-10), lihat docs/catatan-migrasi-data.md ===
 -- Ditambahkan setelah tarif diturunkan supaya riwayat tarif hanya berasal dari data asli.
@@ -133,12 +147,12 @@ INSERT INTO adjustment VALUES
 
 -- nominal mengikuti tarif rumah yang berlaku di periode itu
 CREATE TEMP VIEW adjustment_priced AS
-SELECT a.*, h.id AS house_id, h.occupant_name,
+SELECT a.*, h.id AS house_id, h.resident_name AS occupant_name,
        (SELECT hfp.fee_plan_id FROM house_fee_plan hfp
         WHERE hfp.house_id = h.id AND hfp.start_period <= a.period
         ORDER BY hfp.start_period DESC LIMIT 1) AS fee_plan_id
 FROM adjustment a
-JOIN house h ON h.block = a.block AND h.number = a.number;
+JOIN v_house_current h ON h.block = a.block AND h.number = a.number;
 
 INSERT INTO payment (payer_name, paid_at, method, reported_amount, status, notes, legacy_ref)
 SELECT min(ap.occupant_name), min(ap.paid_at), 'TRANSFER', sum(fp.total_amount), 'APPROVED', min(ap.notes), ap.ref
@@ -242,6 +256,14 @@ BEGIN
 
   IF EXISTS (SELECT 1 FROM house h WHERE NOT EXISTS (SELECT 1 FROM house_fee_plan hfp WHERE hfp.house_id = h.id)) THEN
     RAISE EXCEPTION 'Ada rumah tanpa tarif (house_fee_plan)';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM v_house_current WHERE status IS NULL) THEN
+    RAISE EXCEPTION 'Ada rumah tanpa riwayat kondisi (house_occupancy)';
+  END IF;
+
+  IF (SELECT count(*) FROM house_occupancy WHERE status = 'VACANT') <> (SELECT count(*) FROM vacancy) THEN
+    RAISE EXCEPTION 'Riwayat rumah kosong tidak sesuai daftar';
   END IF;
 END $$;
 
