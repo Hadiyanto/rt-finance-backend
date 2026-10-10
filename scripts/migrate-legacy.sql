@@ -105,16 +105,44 @@ FROM vacancy v
 JOIN house h ON h.block = v.block AND h.number = v.number
 ON CONFLICT (house_id, start_period) DO UPDATE SET fee_plan_id = EXCLUDED.fee_plan_id;
 
--- nama tetap nama pemilik terakhir yang tercatat (rumah kosong tetap punya pemilik yang membayar)
+-- === Riwayat kondisi rumah diturunkan dari riwayat tarif ===
+-- Aturan bendahara: periode bertarif KEAMANAN_100 = rumah kosong; tarif lain = dihuni.
+-- Baris baru hanya saat status berubah. Nama tetap nama terakhir yang tercatat
+-- (rumah kosong tetap punya pemilik yang membayar).
+CREATE TEMP TABLE occupancy_change ON COMMIT DROP AS
+WITH s AS (
+  SELECT hfp.house_id, hfp.start_period,
+         CASE fp.code WHEN 'KEAMANAN_100' THEN 'VACANT' ELSE 'OCCUPIED' END AS status
+  FROM house_fee_plan hfp JOIN fee_plan fp ON fp.id = hfp.fee_plan_id
+), c AS (
+  SELECT s.*, lag(s.status, 1, 'OCCUPIED') OVER (PARTITION BY s.house_id ORDER BY s.start_period) AS prev_status
+  FROM s
+)
+SELECT c.house_id, c.start_period, c.status,
+       coalesce(v.notes, CASE c.status WHEN 'VACANT' THEN 'Tarif Rp100.000, dianggap kosong'
+                                       ELSE 'Tarif kembali tarif hunian, dianggap terisi lagi' END) AS notes
+FROM c
+JOIN house h ON h.id = c.house_id
+LEFT JOIN vacancy v ON v.block = h.block AND v.number = h.number AND v.start_period = c.start_period
+WHERE c.status <> c.prev_status;
+
+-- perubahan di 2025-12 menimpa kondisi awal dari Resident (masih di periode yang sama)
+UPDATE house_occupancy ho
+SET status = oc.status, notes = oc.notes
+FROM occupancy_change oc
+WHERE ho.house_id = oc.house_id AND ho.start_period = oc.start_period;
+
 INSERT INTO house_occupancy (house_id, start_period, status, resident_name, phone, occupancy_type, notes)
-SELECT h.id, v.start_period, 'VACANT', prev.resident_name, prev.phone, prev.occupancy_type, v.notes
-FROM vacancy v
-JOIN house h ON h.block = v.block AND h.number = v.number
+SELECT oc.house_id, oc.start_period, oc.status, prev.resident_name, prev.phone, prev.occupancy_type, oc.notes
+FROM occupancy_change oc
 JOIN LATERAL (
   SELECT * FROM house_occupancy ho
-  WHERE ho.house_id = h.id AND ho.start_period < v.start_period
+  WHERE ho.house_id = oc.house_id AND ho.start_period < oc.start_period
   ORDER BY ho.start_period DESC LIMIT 1
-) prev ON true;
+) prev ON true
+WHERE NOT EXISTS (
+  SELECT 1 FROM house_occupancy ho WHERE ho.house_id = oc.house_id AND ho.start_period = oc.start_period
+);
 
 -- === Koreksi yang dikonfirmasi bendahara (2026-10-10), lihat docs/catatan-migrasi-data.md ===
 -- Ditambahkan setelah tarif diturunkan supaya riwayat tarif hanya berasal dari data asli.
@@ -262,8 +290,27 @@ BEGIN
     RAISE EXCEPTION 'Ada rumah tanpa riwayat kondisi (house_occupancy)';
   END IF;
 
-  IF (SELECT count(*) FROM house_occupancy WHERE status = 'VACANT') <> (SELECT count(*) FROM vacancy) THEN
-    RAISE EXCEPTION 'Riwayat rumah kosong tidak sesuai daftar';
+  -- di setiap awal periode tarif, status rumah harus sesuai aturan (KEAMANAN_100 = kosong)
+  IF EXISTS (
+    SELECT 1
+    FROM house_fee_plan hfp
+    JOIN fee_plan fp ON fp.id = hfp.fee_plan_id
+    JOIN LATERAL (
+      SELECT ho.status FROM house_occupancy ho
+      WHERE ho.house_id = hfp.house_id AND ho.start_period <= hfp.start_period
+      ORDER BY ho.start_period DESC LIMIT 1
+    ) o ON true
+    WHERE o.status <> CASE fp.code WHEN 'KEAMANAN_100' THEN 'VACANT' ELSE 'OCCUPIED' END
+  ) THEN
+    RAISE EXCEPTION 'Riwayat kondisi rumah tidak sesuai riwayat tarif';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM vacancy v JOIN house h ON h.block = v.block AND h.number = v.number
+    WHERE NOT EXISTS (SELECT 1 FROM house_occupancy ho
+                      WHERE ho.house_id = h.id AND ho.start_period = v.start_period AND ho.status = 'VACANT')
+  ) THEN
+    RAISE EXCEPTION 'Ada rumah kosong dari laporan bendahara yang tidak tercatat';
   END IF;
 END $$;
 
