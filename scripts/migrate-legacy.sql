@@ -82,6 +82,26 @@ SELECT house_id, CASE WHEN rn = 1 THEN '2025-12' ELSE period END, fee_plan_id
 FROM seq
 WHERE rn = 1 OR fee_plan_id IS DISTINCT FROM prev_plan;
 
+-- === Rumah kosong menurut laporan bendahara "Pending September" 2026 ===
+-- Rumah kosong ditagih keamanan saja (Rp100.000) mulai bulan kosong; status rumah ditandai VACANT.
+CREATE TEMP TABLE vacancy (block text, number text, start_period text) ON COMMIT DROP;
+INSERT INTO vacancy VALUES
+  ('A1', '4',  '2026-08'),
+  ('A3', '2',  '2026-05'),
+  ('A4', '4',  '2026-08'),
+  ('B1', '10', '2026-09'),
+  ('B1', '28', '2026-09');
+
+INSERT INTO house_fee_plan (house_id, start_period, fee_plan_id)
+SELECT h.id, v.start_period, (SELECT id FROM fee_plan WHERE code = 'KEAMANAN_100')
+FROM vacancy v
+JOIN house h ON h.block = v.block AND h.number = v.number
+ON CONFLICT (house_id, start_period) DO UPDATE SET fee_plan_id = EXCLUDED.fee_plan_id;
+
+UPDATE house h SET status = 'VACANT'
+FROM vacancy v
+WHERE h.block = v.block AND h.number = v.number;
+
 -- === Koreksi yang dikonfirmasi bendahara (2026-10-10), lihat docs/catatan-migrasi-data.md ===
 -- Ditambahkan setelah tarif diturunkan supaya riwayat tarif hanya berasal dari data asli.
 -- legacy_ref 'Koreksi:…' / 'DeferredSubscription:…' membedakan baris ini dari data legacy saat rekonsiliasi.
@@ -100,7 +120,16 @@ INSERT INTO adjustment VALUES
   ('Koreksi:B1/15', '2026-10-10', 'Koreksi migrasi: lunas menurut catatan bendahara', 'B1', '15', '2026-06'),
   -- bendahara: A3/8 tidak ada tunggakan
   ('Koreksi:A3/8', '2026-10-10', 'Koreksi migrasi: lunas menurut catatan bendahara', 'A3', '8', '2026-02'),
-  ('Koreksi:A3/8', '2026-10-10', 'Koreksi migrasi: lunas menurut catatan bendahara', 'A3', '8', '2026-03');
+  ('Koreksi:A3/8', '2026-10-10', 'Koreksi migrasi: lunas menurut catatan bendahara', 'A3', '8', '2026-03'),
+  -- bendahara: bulan 2026 yang tidak ada di laporan "Pending September" berarti lunas
+  ('Koreksi:A3/2',  '2026-10-10', 'Koreksi migrasi: lunas menurut catatan bendahara', 'A3', '2',  '2026-01'),
+  ('Koreksi:A3/2',  '2026-10-10', 'Koreksi migrasi: lunas menurut catatan bendahara', 'A3', '2',  '2026-02'),
+  ('Koreksi:B1/2',  '2026-10-10', 'Koreksi migrasi: lunas menurut catatan bendahara', 'B1', '2',  '2026-01'),
+  ('Koreksi:B1/2',  '2026-10-10', 'Koreksi migrasi: lunas menurut catatan bendahara', 'B1', '2',  '2026-02'),
+  ('Koreksi:A4/6',  '2026-10-10', 'Koreksi migrasi: lunas menurut catatan bendahara', 'A4', '6',  '2026-01'),
+  ('Koreksi:A4/7',  '2026-10-10', 'Koreksi migrasi: lunas menurut catatan bendahara', 'A4', '7',  '2026-01'),
+  ('Koreksi:B1/17', '2026-10-10', 'Koreksi migrasi: lunas menurut catatan bendahara', 'B1', '17', '2026-01'),
+  ('Koreksi:B1/7',  '2026-10-10', 'Koreksi migrasi: lunas menurut catatan bendahara', 'B1', '7',  '2026-04');
 
 -- nominal mengikuti tarif rumah yang berlaku di periode itu
 CREATE TEMP VIEW adjustment_priced AS
