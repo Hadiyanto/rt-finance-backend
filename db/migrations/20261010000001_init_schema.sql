@@ -95,8 +95,8 @@ CREATE TABLE payment (
   ocr_error       text,
   notes           text,
   submitted_by    int REFERENCES app_user (id),                -- NULL = form publik warga
-  approved_by     int REFERENCES app_user (id),
-  approved_at     timestamptz,
+  reviewed_by     int REFERENCES app_user (id),                -- admin yang menyetujui/menolak
+  reviewed_at     timestamptz,
   reject_reason   text,
   legacy_ref      text,                                        -- jejak migrasi, mis. 'MonthlyFee:123'
   created_at      timestamptz NOT NULL DEFAULT now(),

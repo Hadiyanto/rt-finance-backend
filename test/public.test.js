@@ -1,46 +1,13 @@
-const { test, before, beforeEach, after } = require("node:test");
+const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const { TEST_DATABASE_URL, resetSchema } = require("./helpers/db");
-
-process.env.DATABASE_URL = TEST_DATABASE_URL;
-process.env.NODE_ENV = "test";
-delete process.env.CLOUDINARY_CLOUD_NAME;
-
-const app = require("../app");
-const db = require("../lib/db");
+const { useTestServer } = require("./helpers/server");
 const houses = require("../repositories/houses");
 
-const FIXTURES = fs.readFileSync(path.join(__dirname, "fixtures.sql"), "utf8");
+const ctx = useTestServer();
+const { db } = ctx;
+const api = (...args) => ctx.api(...args);
+
 const PROOF = "https://res.cloudinary.com/demo/image/upload/bukti.jpg";
-
-let server;
-let baseUrl;
-
-before(async () => {
-  await resetSchema();
-  server = app.listen(0);
-  baseUrl = `http://127.0.0.1:${server.address().port}`;
-});
-
-beforeEach(async () => {
-  await db.query(FIXTURES);
-});
-
-after(async () => {
-  server.close();
-  await db.pool.end();
-});
-
-async function api(method, url, body) {
-  const res = await fetch(baseUrl + url, {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : {},
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  return { status: res.status, body: await res.json() };
-}
 
 const monthsOf = (house) => Object.fromEntries(house.months.map((m) => [m.period, m]));
 
@@ -195,7 +162,7 @@ test("POST /payments: validasi input", async () => {
 });
 
 test("POST /upload-proof tanpa file → 400", async () => {
-  const res = await fetch(`${baseUrl}/api/public/upload-proof`, { method: "POST", body: new FormData() });
+  const res = await fetch(`${ctx.baseUrl}/api/public/upload-proof`, { method: "POST", body: new FormData() });
   assert.equal(res.status, 400);
   assert.equal((await res.json()).code, "FILE_REQUIRED");
 });

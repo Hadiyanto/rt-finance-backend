@@ -22,6 +22,8 @@ app.get("/health", async (req, res) => {
 });
 
 app.use("/api/public", require("./routes/public"));
+app.use("/api/auth", require("./routes/auth"));
+app.use("/api/admin", require("./routes/admin"));
 
 app.use((req, res) => {
   res.status(404).json({ code: "NOT_FOUND", message: "Endpoint tidak ditemukan" });

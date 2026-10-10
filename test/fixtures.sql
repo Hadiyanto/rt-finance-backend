@@ -3,7 +3,14 @@
 --   A1/2  : IURAN_210 sejak 2025-12, kosong mulai 2026-08 (KEAMANAN_100)
 --   B1/12A: baru ditagih mulai 2026-03
 --   A1/10 : untuk cek urutan nomor rumah (10 setelah 2)
-TRUNCATE payment_item, payment, house_fee_plan, house_occupancy, house RESTART IDENTITY CASCADE;
+--   user: bendahara@rt.test (bendahara), rt@rt.test (rt), nonaktif@rt.test (tidak aktif); password semua 'rahasia123'
+TRUNCATE payment_item, payment, house_fee_plan, house_occupancy, house, app_user RESTART IDENTITY CASCADE;
+
+INSERT INTO app_user (id, name, email, password_hash, role, is_active) VALUES
+  (1, 'Bendahara', 'bendahara@rt.test', '$2b$10$5MLj.tkPKg/xdOElz73oVOwKcX6TVAIGeUGtOMilbBxIss1Ux8YO.', 'bendahara', true),
+  (2, 'Pak RT',    'rt@rt.test',        '$2b$10$5MLj.tkPKg/xdOElz73oVOwKcX6TVAIGeUGtOMilbBxIss1Ux8YO.', 'rt',        true),
+  (3, 'Mantan',    'nonaktif@rt.test',  '$2b$10$5MLj.tkPKg/xdOElz73oVOwKcX6TVAIGeUGtOMilbBxIss1Ux8YO.', 'admin',     false);
+SELECT setval(pg_get_serial_sequence('app_user', 'id'), 3);
 
 INSERT INTO house (id, block, number) VALUES (1, 'A1', '1'), (2, 'A1', '2'), (3, 'B1', '12A'), (4, 'A1', '10');
 SELECT setval(pg_get_serial_sequence('house', 'id'), 4);
