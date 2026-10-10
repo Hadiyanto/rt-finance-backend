@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: rt_finance
+      POSTGRES_USER: rt
+      POSTGRES_PASSWORD: rt
+      TZ: UTC
+    ports: ["5433:5432"] # 5433 agar tidak bentrok dengan postgres Homebrew
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rt -d rt_finance"]
+      interval: 3s
+      retries: 20
+
+  # docker compose -f docker-compose.dev.yml run --rm migrate [up|down|status|new <nama>]
+  migrate:
+    image: ghcr.io/amacneil/dbmate:2
+    profiles: [tools]
+    environment:
+      DATABASE_URL: postgres://rt:rt@db:5432/rt_finance?sslmode=disable
+      DBMATE_MIGRATIONS_DIR: /db/migrations
+      DBMATE_NO_DUMP_SCHEMA: "true"
+    volumes: [./db:/db]
+    depends_on:
+      db: { condition: service_healthy }
+    command: ["--wait", "up"]
+
+volumes:
+  pgdata:
