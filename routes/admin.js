@@ -2,6 +2,9 @@
 const express = require("express");
 const { z } = require("zod");
 const adminPayments = require("../repositories/adminPayments");
+const reports = require("../repositories/reports");
+const ledger = require("../repositories/ledger");
+const { PERIOD_RE, currentPeriod } = require("../lib/period");
 const { runOcrBatch } = require("../services/ocr");
 const { requireAuth, ADMIN_ROLES } = require("../lib/auth");
 
@@ -45,6 +48,50 @@ const rejectBody = z.object({ reason: z.string().trim().min(3, "Alasan penolakan
 router.post("/payments/:id/reject", async (req, res) => {
   const { reason } = rejectBody.parse(req.body ?? {});
   res.json(await adminPayments.reject(idParam.parse(req.params.id), req.user.id, reason));
+});
+
+// === Tunggakan (termasuk nomor HP untuk menghubungi warga) ===
+
+const arrearsQuery = z
+  .object({
+    from: z.string().regex(PERIOD_RE).optional(),
+    to: z.string().regex(PERIOD_RE).optional(),
+  })
+  .refine((q) => !q.from || !q.to || q.from <= q.to, "Periode awal harus sebelum periode akhir")
+  .refine((q) => !q.from || !q.to || Number(q.to.slice(0, 4)) - Number(q.from.slice(0, 4)) <= 5, "Rentang maksimal 5 tahun");
+
+router.get("/arrears", async (req, res) => {
+  const current = currentPeriod();
+  const { from, to } = arrearsQuery.parse(req.query);
+  const year = current.slice(0, 4);
+  res.json(await reports.arrears(from ?? `${year}-01`, to ?? `${year}-12`, current));
+});
+
+// === Kas ===
+
+router.get("/ledger", async (req, res) => {
+  res.json(await ledger.list({ includeUnapproved: true }));
+});
+
+const ledgerBody = z.object({
+  entryDate: z.iso.date(),
+  direction: z.enum(["IN", "OUT"]),
+  amount: z.coerce.number().int().positive().max(1_000_000_000),
+  categoryId: z.coerce.number().int().positive(),
+  description: z.string().trim().min(3, "Keterangan harus diisi").max(500),
+  proofUrl: z.string().url().startsWith("https://").optional(),
+});
+
+router.post("/ledger", async (req, res) => {
+  res.status(201).json(await ledger.create(ledgerBody.parse(req.body), req.user.id));
+});
+
+router.post("/ledger/:id/approve", async (req, res) => {
+  res.json(await ledger.review(idParam.parse(req.params.id), req.user.id, "APPROVED"));
+});
+
+router.post("/ledger/:id/reject", async (req, res) => {
+  res.json(await ledger.review(idParam.parse(req.params.id), req.user.id, "REJECTED"));
 });
 
 // Jalankan OCR sekarang tanpa menunggu jadwal.

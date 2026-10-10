@@ -6,39 +6,23 @@
   "scripts": {
     "start": "node index.js",
     "dev": "node --watch index.js",
-    "test": "node --test --test-concurrency=1 \"test/**/*.test.js\"",
-    "postinstall": "prisma generate"
+    "test": "node --test --test-concurrency=1 \"test/**/*.test.js\""
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
-    "@prisma/client": "^6.19.1",
-    "@upstash/redis": "^1.35.8",
-    "axios": "^1.13.2",
     "bcrypt": "^6.0.0",
     "cloudinary": "^2.8.0",
     "cors": "^2.8.5",
-    "csv-parser": "^3.2.0",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.1",
-    "googleapis": "^168.0.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.2",
     "node-cron": "^4.2.1",
-    "openai": "^6.10.0",
     "pg": "^8.19.0",
-    "swagger-ui-express": "^5.0.1",
-    "telegraf": "^4.16.3",
     "tesseract.js": "^7.0.0",
     "zod": "^4.6.5"
-  },
-  "devDependencies": {
-    "prisma": "^6.19.1"
-  },
-  "prisma": {
-    "seed": "node prisma/seed.ts"
   }
 }

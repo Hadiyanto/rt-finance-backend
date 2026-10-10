@@ -7,6 +7,8 @@ const { rateLimit } = require("express-rate-limit");
 const cloudinary = require("../config/cloudinary");
 const houses = require("../repositories/houses");
 const payments = require("../repositories/payments");
+const reports = require("../repositories/reports");
+const ledger = require("../repositories/ledger");
 const { AppError } = require("../lib/errors");
 const { PERIOD_RE, currentPeriod } = require("../lib/period");
 
@@ -70,6 +72,45 @@ router.post("/payments", writeLimiter, async (req, res) => {
   const input = paymentSchema.parse(req.body);
   res.status(201).json(await payments.createPublic(input));
 });
+
+// === THR ===
+
+const thrSchema = z.object({
+  payerName: z.string().trim().min(2, "Nama pelapor harus diisi").max(100),
+  houseId: z.coerce.number().int().positive(),
+  year: z.coerce.number().int().min(2020).max(2100),
+  amount: z.coerce.number().int().min(1000, "Nominal THR minimal Rp1.000").max(100_000_000),
+  proofUrl: proofUrlSchema,
+});
+
+router.post("/thr", writeLimiter, async (req, res) => {
+  res.status(201).json(await payments.createPublicThr(thrSchema.parse(req.body)));
+});
+
+const yearSchema = z.coerce.number().int().min(2020).max(2100);
+
+router.get("/thr/recap", readLimiter, async (req, res) => {
+  const year = yearSchema.parse(req.query.year ?? currentPeriod().slice(0, 4));
+  res.json(await reports.thrRecap(year));
+});
+
+// === Laporan & kas (sama seperti app lama, terbuka untuk warga) ===
+
+router.get("/reports/fee-breakdown", readLimiter, async (req, res) => {
+  const period = z.string().regex(PERIOD_RE, "Format periode YYYY-MM").parse(req.query.period ?? currentPeriod());
+  const data = await reports.feeBreakdown(period);
+  res.json({ period, total: data.length, data });
+});
+
+router.get("/ledger", readLimiter, async (req, res) => {
+  res.json(await ledger.list());
+});
+
+router.get("/ledger/categories", readLimiter, async (req, res) => {
+  res.json({ data: await ledger.categories() });
+});
+
+// === Upload bukti ===
 
 const upload = multer({
   storage: multer.memoryStorage(),

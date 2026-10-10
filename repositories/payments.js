@@ -117,4 +117,35 @@ async function createPublic({ payerName, reportedAmount, proofUrl, items }) {
   }
 }
 
-module.exports = { quote, createPublic };
+/**
+ * Laporan THR dari warga: nominal sukarela (diisi warga), 1 rumah per tahun.
+ */
+async function createPublicThr({ payerName, houseId, year, amount, proofUrl }) {
+  const period = String(year);
+  try {
+    return await db.withTransaction(async (client) => {
+      const { rows: [house] } = await client.query("SELECT id, block || '/' || number AS label FROM house WHERE id = $1", [houseId]);
+      if (!house) {
+        throw new AppError(422, "UNKNOWN_HOUSE", "Rumah tidak ditemukan", { houseIds: [houseId] });
+      }
+
+      const { rows: [payment] } = await client.query(
+        `INSERT INTO payment (payer_name, reported_amount, proof_url, status)
+         VALUES ($1, $2, $3, 'PENDING') RETURNING id, status`,
+        [payerName, amount, proofUrl]
+      );
+      await client.query(
+        `INSERT INTO payment_item (payment_id, house_id, kind, period, amount) VALUES ($1, $2, 'THR', $3, $4)`,
+        [payment.id, houseId, period, amount]
+      );
+      return { paymentId: payment.id, status: payment.status, payerName, houseId, label: house.label, year, amount };
+    });
+  } catch (err) {
+    if (db.isUniqueViolation(err)) {
+      throw new AppError(409, "THR_ALREADY_REPORTED", `THR ${year} untuk rumah ini sudah pernah dilaporkan`);
+    }
+    throw err;
+  }
+}
+
+module.exports = { quote, createPublic, createPublicThr };
