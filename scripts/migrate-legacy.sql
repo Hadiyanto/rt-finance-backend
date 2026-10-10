@@ -82,6 +82,47 @@ SELECT house_id, CASE WHEN rn = 1 THEN '2025-12' ELSE period END, fee_plan_id
 FROM seq
 WHERE rn = 1 OR fee_plan_id IS DISTINCT FROM prev_plan;
 
+-- === Koreksi yang dikonfirmasi bendahara (2026-10-10), lihat docs/catatan-migrasi-data.md ===
+-- Ditambahkan setelah tarif diturunkan supaya riwayat tarif hanya berasal dari data asli.
+-- legacy_ref 'Koreksi:…' / 'DeferredSubscription:…' membedakan baris ini dari data legacy saat rekonsiliasi.
+CREATE TEMP TABLE adjustment (ref text, paid_at date, notes text, block text, number text, period text) ON COMMIT DROP;
+INSERT INTO adjustment VALUES
+  -- sisa prabayar B1/4 (2025-11 s/d 2026-10) yang belum pernah di-release ke MonthlyFee
+  ('DeferredSubscription:cmjebhi9k0013uhtmtlnpqeki', '2025-12-20', 'Sisa prabayar 2025-11 s/d 2026-10 (migrasi DeferredSubscription)', 'B1', '4', '2026-04'),
+  ('DeferredSubscription:cmjebhi9k0013uhtmtlnpqeki', '2025-12-20', 'Sisa prabayar 2025-11 s/d 2026-10 (migrasi DeferredSubscription)', 'B1', '4', '2026-05'),
+  ('DeferredSubscription:cmjebhi9k0013uhtmtlnpqeki', '2025-12-20', 'Sisa prabayar 2025-11 s/d 2026-10 (migrasi DeferredSubscription)', 'B1', '4', '2026-06'),
+  ('DeferredSubscription:cmjebhi9k0013uhtmtlnpqeki', '2025-12-20', 'Sisa prabayar 2025-11 s/d 2026-10 (migrasi DeferredSubscription)', 'B1', '4', '2026-07'),
+  ('DeferredSubscription:cmjebhi9k0013uhtmtlnpqeki', '2025-12-20', 'Sisa prabayar 2025-11 s/d 2026-10 (migrasi DeferredSubscription)', 'B1', '4', '2026-08'),
+  ('DeferredSubscription:cmjebhi9k0013uhtmtlnpqeki', '2025-12-20', 'Sisa prabayar 2025-11 s/d 2026-10 (migrasi DeferredSubscription)', 'B1', '4', '2026-09'),
+  ('DeferredSubscription:cmjebhi9k0013uhtmtlnpqeki', '2025-12-20', 'Sisa prabayar 2025-11 s/d 2026-10 (migrasi DeferredSubscription)', 'B1', '4', '2026-10'),
+  -- bendahara: B1/15 hanya menunggak 2026-09
+  ('Koreksi:B1/15', '2026-10-10', 'Koreksi migrasi: lunas menurut catatan bendahara', 'B1', '15', '2026-02'),
+  ('Koreksi:B1/15', '2026-10-10', 'Koreksi migrasi: lunas menurut catatan bendahara', 'B1', '15', '2026-06'),
+  -- bendahara: A3/8 tidak ada tunggakan
+  ('Koreksi:A3/8', '2026-10-10', 'Koreksi migrasi: lunas menurut catatan bendahara', 'A3', '8', '2026-02'),
+  ('Koreksi:A3/8', '2026-10-10', 'Koreksi migrasi: lunas menurut catatan bendahara', 'A3', '8', '2026-03');
+
+-- nominal mengikuti tarif rumah yang berlaku di periode itu
+CREATE TEMP VIEW adjustment_priced AS
+SELECT a.*, h.id AS house_id, h.occupant_name,
+       (SELECT hfp.fee_plan_id FROM house_fee_plan hfp
+        WHERE hfp.house_id = h.id AND hfp.start_period <= a.period
+        ORDER BY hfp.start_period DESC LIMIT 1) AS fee_plan_id
+FROM adjustment a
+JOIN house h ON h.block = a.block AND h.number = a.number;
+
+INSERT INTO payment (payer_name, paid_at, method, reported_amount, status, notes, legacy_ref)
+SELECT min(ap.occupant_name), min(ap.paid_at), 'TRANSFER', sum(fp.total_amount), 'APPROVED', min(ap.notes), ap.ref
+FROM adjustment_priced ap
+JOIN fee_plan fp ON fp.id = ap.fee_plan_id
+GROUP BY ap.ref;
+
+INSERT INTO payment_item (payment_id, house_id, kind, period, fee_plan_id, amount)
+SELECT p.id, ap.house_id, 'MONTHLY_FEE', ap.period, fp.id, fp.total_amount
+FROM adjustment_priced ap
+JOIN payment p ON p.legacy_ref = ap.ref
+JOIN fee_plan fp ON fp.id = ap.fee_plan_id;
+
 -- === THR: 1 Thr = 1 payment + 1 item kind THR, periode = tahun ===
 INSERT INTO payment (payer_name, paid_at, method, reported_amount, proof_url, status,
                      ocr_attempts, ocr_error, notes, legacy_ref, created_at, updated_at)
@@ -129,12 +170,21 @@ BEGIN
     SELECT period, block, "houseNumber", amount FROM legacy_fee
     EXCEPT ALL
     SELECT pi.period, h.block, h.number, pi.amount
-    FROM payment_item pi JOIN house h ON h.id = pi.house_id WHERE pi.kind = 'MONTHLY_FEE'
+    FROM payment_item pi
+    JOIN payment p ON p.id = pi.payment_id
+    JOIN house h ON h.id = pi.house_id
+    WHERE pi.kind = 'MONTHLY_FEE' AND p.legacy_ref LIKE 'MonthlyFee:%'
   ) d;
   IF diff <> 0 THEN RAISE EXCEPTION 'Rekonsiliasi iuran: % baris legacy tidak ada di v2', diff; END IF;
 
-  IF (SELECT count(*) FROM payment_item WHERE kind = 'MONTHLY_FEE') <> (SELECT count(*) FROM legacy_fee) THEN
+  IF (SELECT count(*) FROM payment_item pi JOIN payment p ON p.id = pi.payment_id
+      WHERE pi.kind = 'MONTHLY_FEE' AND p.legacy_ref LIKE 'MonthlyFee:%') <> (SELECT count(*) FROM legacy_fee) THEN
     RAISE EXCEPTION 'Rekonsiliasi iuran: jumlah item berbeda';
+  END IF;
+
+  IF (SELECT count(*) FROM payment_item pi JOIN payment p ON p.id = pi.payment_id
+      WHERE p.legacy_ref IN (SELECT DISTINCT ref FROM adjustment)) <> (SELECT count(*) FROM adjustment) THEN
+    RAISE EXCEPTION 'Koreksi: jumlah item tidak sesuai daftar koreksi';
   END IF;
 
   IF (SELECT coalesce(sum(amount), 0) FROM payment_item WHERE kind = 'THR')

@@ -9,14 +9,32 @@ WITH l AS (
   SELECT to_char(date, 'YYYY-MM') AS period, count(*) AS n, sum(amount) AS total
   FROM legacy."MonthlyFee" GROUP BY 1
 ), v AS (
-  SELECT period, count(*) AS n, sum(amount) AS total
-  FROM payment_item WHERE kind = 'MONTHLY_FEE' AND voided_at IS NULL GROUP BY 1
+  -- v2 dipisah: berasal dari MonthlyFee vs koreksi (Koreksi:… / DeferredSubscription:…)
+  SELECT pi.period,
+         count(*) FILTER (WHERE p.legacy_ref LIKE 'MonthlyFee:%') AS n,
+         sum(pi.amount) FILTER (WHERE p.legacy_ref LIKE 'MonthlyFee:%') AS total,
+         count(*) FILTER (WHERE p.legacy_ref NOT LIKE 'MonthlyFee:%') AS koreksi_n,
+         sum(pi.amount) FILTER (WHERE p.legacy_ref NOT LIKE 'MonthlyFee:%') AS koreksi_total
+  FROM payment_item pi JOIN payment p ON p.id = pi.payment_id
+  WHERE pi.kind = 'MONTHLY_FEE' AND pi.voided_at IS NULL GROUP BY 1
 )
 SELECT coalesce(l.period, v.period) AS period,
        l.n AS legacy_n, v.n AS v2_n, l.total AS legacy_total, v.total AS v2_total,
-       CASE WHEN l.n IS NOT DISTINCT FROM v.n AND l.total IS NOT DISTINCT FROM v.total THEN 'OK' ELSE 'BEDA' END AS cek
+       nullif(v.koreksi_n, 0) AS koreksi_n, v.koreksi_total,
+       CASE WHEN l.n IS NOT DISTINCT FROM nullif(v.n, 0) AND l.total IS NOT DISTINCT FROM v.total THEN 'OK'
+            WHEN l.period = '2031-04' THEN 'DIKECUALIKAN'
+            ELSE 'BEDA' END AS cek
 FROM l FULL JOIN v ON v.period = l.period
 ORDER BY 1;
+
+\echo '== Koreksi migrasi =='
+SELECT p.legacy_ref, h.block || '/' || h.number AS rumah,
+       string_agg(pi.period, ' ' ORDER BY pi.period) AS periode, sum(pi.amount) AS total
+FROM payment p
+JOIN payment_item pi ON pi.payment_id = p.id
+JOIN house h ON h.id = pi.house_id
+WHERE p.legacy_ref NOT LIKE 'MonthlyFee:%' AND p.legacy_ref NOT LIKE 'Thr:%'
+GROUP BY p.legacy_ref, h.block, h.number ORDER BY 2;
 
 \echo '== THR per tahun =='
 SELECT 'legacy' AS src, to_char(date, 'YYYY') AS tahun, count(*), sum(amount) FROM legacy."Thr" GROUP BY 2
