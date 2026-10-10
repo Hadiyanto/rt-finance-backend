@@ -11,7 +11,6 @@ router.use(require("./cron"));
 router.use(require("./cashLedger"));
 router.use(require("./thr"));
 router.use(require("./deferredSubscription"));
-router.use(require("./whatsapp"));
 router.use(require("./unpaidResidents"));
 router.use("/sheet", require("./sheet"));
 router.use("/tele", require("./tele").router);
