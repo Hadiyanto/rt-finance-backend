@@ -97,7 +97,7 @@ async function review(id, userId, status) {
  * Bandingkan iuran yang sudah disetujui untuk 1 periode (per pos kas) dengan yang sudah tercatat di kas.
  * toAdd = selisih yang akan dicatat saat snapshot; legacyEntries = entri iuran manual lama yang akan di-VOID.
  */
-async function feeSnapshotPreview(period, client = db.pool) {
+async function buildPreview(period, client = db.pool) {
   const { rows: posts } = await client.query(
     `WITH collected AS (
        -- sama dengan /report-iuran: nominal komponen dari tarif tiap item
@@ -115,10 +115,11 @@ async function feeSnapshotPreview(period, client = db.pool) {
        WHERE ref_type = 'FEE_SNAPSHOT' AND fee_period = $1 AND status = 'APPROVED'
        GROUP BY category_id
      )
-     SELECT c.id AS category_id, c.code, c.name,
+     SELECT c.id AS category_id, c.code, c.name, pc.id AS payout_category_id,
             coalesce(col.amount, 0)::int AS collected,
             coalesce(rec.amount, 0)::int AS recorded
      FROM ledger_category c
+     LEFT JOIN ledger_category pc ON pc.code = c.payout_code
      LEFT JOIN collected col ON col.category_code = c.code
      LEFT JOIN recorded rec ON rec.category_id = c.id
      WHERE c.code LIKE 'FEE_%'
@@ -140,19 +141,29 @@ async function feeSnapshotPreview(period, client = db.pool) {
     collected: r.collected,
     recorded: r.recorded,
     toAdd: r.collected - r.recorded,
+    // true = langsung disetor ke RW/yayasan (dicatat juga sebagai pengeluaran)
+    payout: r.payout_category_id != null,
+    payoutCategoryId: r.payout_category_id,
   }));
+  const positive = (i) => Math.max(i.toAdd, 0);
 
   return {
     period,
     label: periodLabel(period),
     alreadySnapshotted: items.some((i) => i.recorded > 0),
-    items,
+    items: items.map(({ payoutCategoryId, ...rest }) => rest),
+    _items: items,
     collectedTotal: items.reduce((s, i) => s + i.collected, 0),
     recordedTotal: items.reduce((s, i) => s + i.recorded, 0),
-    toAddTotal: items.reduce((s, i) => s + Math.max(i.toAdd, 0), 0),
+    toAddTotal: items.reduce((s, i) => s + positive(i), 0),
+    payoutToAddTotal: items.filter((i) => i.payout).reduce((s, i) => s + positive(i), 0),
+    keptToAddTotal: items.filter((i) => !i.payout).reduce((s, i) => s + positive(i), 0),
     legacyEntries: legacy.map((e) => ({ id: e.id, entryDate: e.entry_date, amount: e.amount, description: e.description })),
   };
 }
+
+// _items (berisi id kategori setoran) hanya untuk internal
+const strip = ({ _items, ...rest }) => rest;
 
 function lastDayOfMonth(period) {
   const [y, m] = period.split("-").map(Number);
@@ -171,31 +182,41 @@ async function feeSnapshot(period, userId) {
   return db.withTransaction(async (client) => {
     // satu snapshot per periode pada satu waktu
     await client.query("SELECT pg_advisory_xact_lock(hashtext('fee-snapshot:' || $1))", [period]);
-    const preview = await feeSnapshotPreview(period, client);
+    const preview = await buildPreview(period, client);
 
-    const negative = preview.items.filter((i) => i.toAdd < 0);
+    const { _items: items } = preview;
+    const negative = items.filter((i) => i.toAdd < 0);
     if (negative.length > 0) {
       throw new AppError(409, "RECORDED_EXCEEDS_COLLECTED", "Jumlah di kas lebih besar dari iuran yang disetujui; cek entri kas bulan ini", {
         items: negative.map((i) => i.name),
       });
     }
 
-    const toAdd = preview.items.filter((i) => i.toAdd > 0);
+    const toAdd = items.filter((i) => i.toAdd > 0);
     if (toAdd.length === 0 && preview.legacyEntries.length === 0) {
-      return { ...preview, created: [], voided: [] };
+      return { ...strip(preview), created: [], payouts: [], voided: [] };
     }
 
-    const created = [];
-    for (const item of toAdd) {
-      const suffix = item.recorded > 0 ? " (susulan)" : "";
+    const insert = async (direction, categoryId, amount, description) => {
       const { rows: [row] } = await client.query(
         `INSERT INTO ledger_entry (entry_date, direction, amount, category_id, description, status,
                                    ref_type, fee_period, created_by, approved_by, approved_at)
-         VALUES ($1, 'IN', $2, $3, $4, 'APPROVED', 'FEE_SNAPSHOT', $5, $6, $6, now())
+         VALUES ($1, $2, $3, $4, $5, 'APPROVED', 'FEE_SNAPSHOT', $6, $7, $7, now())
          RETURNING id`,
-        [lastDayOfMonth(period), item.toAdd, item.categoryId, `Iuran ${preview.label} – ${item.name.replace(/^Iuran: /, "")}${suffix}`, period, userId]
+        [lastDayOfMonth(period), direction, amount, categoryId, description, period, userId]
       );
-      created.push(row.id);
+      return row.id;
+    };
+
+    const created = [];
+    const payouts = [];
+    for (const item of toAdd) {
+      const suffix = item.recorded > 0 ? " (susulan)" : "";
+      const post = item.name.replace(/^Iuran: /, "");
+      created.push(await insert("IN", item.categoryId, item.toAdd, `Iuran ${preview.label} – ${post}${suffix}`));
+      if (item.payoutCategoryId) {
+        payouts.push(await insert("OUT", item.payoutCategoryId, item.toAdd, `Setoran iuran ${preview.label} – ${post}${suffix}`));
+      }
     }
 
     const { rows: voided } = await client.query(
@@ -205,8 +226,10 @@ async function feeSnapshot(period, userId) {
       [period, userId]
     );
 
-    return { ...(await feeSnapshotPreview(period, client)), created, voided: voided.map((v) => v.id) };
+    return { ...strip(await buildPreview(period, client)), created, payouts, voided: voided.map((v) => v.id) };
   });
 }
+
+const feeSnapshotPreview = async (period) => strip(await buildPreview(period));
 
 module.exports = { categories, list, create, review, feeSnapshotPreview, feeSnapshot };

@@ -1,4 +1,5 @@
-// Catat iuran ke kas (snapshot) untuk setiap bulan dalam rentang, sama seperti tombol "Iuran" di /pengeluaran.
+// Catat iuran ke kas (snapshot) untuk setiap bulan dalam rentang, sama seperti tombol "Iuran" di /pengeluaran:
+// pemasukan per pos + setoran otomatis untuk pos yang diteruskan ke RW/yayasan.
 // Aman diulang: bulan yang sudah tercatat hanya ditambah selisihnya (kalau ada).
 // Pakai: DATABASE_URL=... node scripts/backfill-fee-snapshots.js [dari=2025-12] [sampai=bulan lalu]
 require("dotenv").config({ quiet: true });
@@ -20,7 +21,7 @@ async function main() {
 
   for (let period = from; period <= to; period = shift(period, 1)) {
     const r = await ledger.feeSnapshot(period, null);
-    const added = r.created.length ? `+${r.created.length} pemasukan` : "tidak ada tambahan";
+    const added = r.created.length ? `+${r.created.length} pemasukan, ${r.payouts.length} setoran RW/yayasan` : "tidak ada tambahan";
     const voided = r.voided.length ? `, ${r.voided.length} entri lama di-VOID` : "";
     console.log(`  ${period}: ${added}${voided} (total iuran ${rp(r.collectedTotal)})`);
   }

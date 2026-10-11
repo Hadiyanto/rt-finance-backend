@@ -130,8 +130,8 @@ test("kas publik: hanya transaksi disetujui, saldo dari yang disetujui", async (
 
   const cats = await ctx.api("GET", "/api/public/ledger/categories");
   const manual = cats.body.data.filter((c) => !c.code);
-  assert.deepEqual(manual.map((c) => c.direction), ["IN", "OUT"]);
-  assert.equal(cats.body.data.filter((c) => c.code).length, 4, "4 kategori sistem iuran");
+  assert.deepEqual(manual.map((c) => c.direction).sort(), ["IN", "OUT"]);
+  assert.equal(cats.body.data.filter((c) => c.code).length, 7, "4 kategori iuran + 3 setoran");
 });
 
 test("kas admin: tambah, kategori harus cocok, approve sekali, saldo berubah", async () => {
