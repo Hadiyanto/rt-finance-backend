@@ -4,7 +4,8 @@
 #   2. skema v2 (dbmate) → schema `public`
 #   3. migrasi data legacy → v2 (scripts/migrate-legacy.sql, termasuk koreksi bendahara)
 #   4. iuran Des 2025 s/d bulan lalu dicatat ke kas (scripts/backfill-fee-snapshots.js)
-#   5. akun admin khusus lokal: dev@local.test / rahasia123
+#   5. seed kas dari rekening koran 2026 (scripts/seed-ledger-rekap-2026.sql, PENDING)
+#   6. akun admin khusus lokal: dev@local.test / rahasia123
 # Pakai: scripts/db-reset-local.sh [path/ke/file.dump]   (default: dump terbaru di ~/backups/rt-finance)
 #        SKIP_LEGACY_MIGRATION=1 scripts/db-reset-local.sh   → berhenti setelah langkah 2 (public kosong)
 set -euo pipefail
@@ -55,7 +56,11 @@ echo "Mencatat iuran ke kas:"
 DATABASE_URL="$LOCAL" node scripts/backfill-fee-snapshots.js
 echo "✓ iuran tercatat di kas"
 
-# 5. admin lokal (hash bcrypt untuk 'rahasia123'); hanya untuk development
+# 5. transaksi dari rekap rekening koran 2026 (PENDING, untuk direview)
+psql "$LOCAL" -v ON_ERROR_STOP=1 -q -f scripts/seed-ledger-rekap-2026.sql > /dev/null
+echo "✓ seed kas dari rekening koran 2026 (PENDING)"
+
+# 6. admin lokal (hash bcrypt untuk 'rahasia123'); hanya untuk development
 psql "$LOCAL" -v ON_ERROR_STOP=1 -q -c "
   INSERT INTO app_user (name, email, password_hash, role)
   VALUES ('Dev Lokal', 'dev@local.test', '\$2b\$10\$5MLj.tkPKg/xdOElz73oVOwKcX6TVAIGeUGtOMilbBxIss1Ux8YO.', 'bendahara')
