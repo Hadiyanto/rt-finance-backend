@@ -3,7 +3,8 @@
 #   1. data lama → schema `legacy`
 #   2. skema v2 (dbmate) → schema `public`
 #   3. migrasi data legacy → v2 (scripts/migrate-legacy.sql, termasuk koreksi bendahara)
-#   4. akun admin khusus lokal: dev@local.test / rahasia123
+#   4. iuran Des 2025 s/d bulan lalu dicatat ke kas (scripts/backfill-fee-snapshots.js)
+#   5. akun admin khusus lokal: dev@local.test / rahasia123
 # Pakai: scripts/db-reset-local.sh [path/ke/file.dump]   (default: dump terbaru di ~/backups/rt-finance)
 #        SKIP_LEGACY_MIGRATION=1 scripts/db-reset-local.sh   → berhenti setelah langkah 2 (public kosong)
 set -euo pipefail
@@ -49,7 +50,12 @@ fi
 psql "$LOCAL" -v ON_ERROR_STOP=1 -q -f scripts/migrate-legacy.sql > /dev/null
 echo "✓ data lama dimigrasi"
 
-# 4. admin lokal (hash bcrypt untuk 'rahasia123'); hanya untuk development
+# 4. iuran Des 2025 s/d bulan lalu dicatat ke kas (sama seperti tombol "Iuran" di /pengeluaran)
+echo "Mencatat iuran ke kas:"
+DATABASE_URL="$LOCAL" node scripts/backfill-fee-snapshots.js
+echo "✓ iuran tercatat di kas"
+
+# 5. admin lokal (hash bcrypt untuk 'rahasia123'); hanya untuk development
 psql "$LOCAL" -v ON_ERROR_STOP=1 -q -c "
   INSERT INTO app_user (name, email, password_hash, role)
   VALUES ('Dev Lokal', 'dev@local.test', '\$2b\$10\$5MLj.tkPKg/xdOElz73oVOwKcX6TVAIGeUGtOMilbBxIss1Ux8YO.', 'bendahara')
