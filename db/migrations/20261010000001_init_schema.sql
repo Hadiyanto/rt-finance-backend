@@ -163,14 +163,6 @@ CREATE TABLE ledger_entry (
 );
 CREATE INDEX ledger_entry_date_idx ON ledger_entry (entry_date);
 
--- === Telegram ===
-
-CREATE TABLE telegram_chat (
-  chat_id    bigint PRIMARY KEY,
-  user_id    int REFERENCES app_user (id),
-  is_allowed boolean NOT NULL DEFAULT false
-);
-
 -- === updated_at otomatis ===
 
 CREATE TRIGGER app_user_updated_at     BEFORE UPDATE ON app_user     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
@@ -205,7 +197,6 @@ WHERE pi.kind = 'MONTHLY_FEE' AND pi.voided_at IS NULL;
 
 DROP VIEW v_house_period_status;
 DROP VIEW v_house_current;
-DROP TABLE telegram_chat;
 DROP TABLE ledger_entry;
 DROP TABLE ledger_category;
 DROP TABLE payment_item;
