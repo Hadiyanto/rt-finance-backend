@@ -37,7 +37,12 @@ WITH seed (ref, entry_date, direction, amount, category, description) AS (VALUES
   ('Rekap2026:rw-2026-08-04', DATE '2026-08-04', 'OUT', 1000000, 'Kegiatan RW',  'Kegiatan RW (transfer ke RW 016)'),
   ('Rekap2026:lampu-2026-08', DATE '2026-08-02', 'OUT',  550000, 'Operasional',  'Pembelian lampu'),
   ('Rekap2026:17an-2026',     DATE '2026-08-17', 'OUT',  405000, 'Sosial',       '17 Agustus 2026'),
-  ('Rekap2026:kasih-2026-09', DATE '2026-09-22', 'OUT',  400000, 'Sosial',       'Tanda kasih')
+  ('Rekap2026:kasih-2026-09', DATE '2026-09-22', 'OUT',  400000, 'Sosial',       'Tanda kasih'),
+
+  -- tambahan bendahara (tidak ada di rekening koran / tunai); tanggal pasti tidak diketahui → akhir bulan
+  ('Rekap2026:rumput-2026-02', DATE '2026-02-28', 'OUT',  400000, 'Kebersihan',   'Potong Rumput Februari 2026'),
+  ('Rekap2026:lampu-2026-03',  DATE '2026-03-31', 'OUT',  550000, 'Operasional',  'Pembelian lampu Maret 2026'),
+  ('Rekap2026:rumput-2026-07', DATE '2026-07-31', 'OUT',  400000, 'Kebersihan',   'Potong Rumput Juli 2026')
 )
 INSERT INTO ledger_entry (entry_date, direction, amount, category_id, description, status, legacy_ref)
 SELECT s.entry_date, s.direction, s.amount, c.id, s.description, 'PENDING', s.ref
@@ -51,7 +56,7 @@ WHERE legacy_ref = 'FinanceEntry:12' AND entry_date <> DATE '2026-07-20';
 
 DO $$
 BEGIN
-  IF (SELECT count(*) FROM ledger_entry WHERE legacy_ref LIKE 'Rekap2026:%') <> 16 THEN
+  IF (SELECT count(*) FROM ledger_entry WHERE legacy_ref LIKE 'Rekap2026:%') <> 19 THEN
     RAISE EXCEPTION 'Seed rekap 2026 tidak lengkap (kategori tidak ditemukan?)';
   END IF;
 END $$;
