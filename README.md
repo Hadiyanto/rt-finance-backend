@@ -74,6 +74,14 @@ Publik: `GET /api/public/houses`, `GET /api/public/house-periods`, `POST /api/pu
 
 Pengurus: `POST /api/auth/login`, `GET /api/auth/me`, `GET|POST /api/admin/payments[/:id/approve|reject]`, `GET /api/admin/arrears`, `GET|POST /api/admin/ledger[/:id/approve|reject]`, `GET|POST /api/admin/ledger/fee-snapshot`, `GET|POST /api/admin/ledger/thr-snapshot`, `POST /api/admin/ocr/run`.
 
+## Deploy (VPS)
+
+Dikelola dari repo [setupvps](https://github.com/Hadiyanto/setupvps) (proyek `rt`): nginx, env terenkripsi, Postgres bersama, dan `05-up.sh rt`. Di repo ini:
+
+- `Dockerfile` + `docker-compose.yml` — container `rt-finance-backend` di port `127.0.0.1:6001`, network `backend` (Postgres bersama `shared-postgres`), volume cache data OCR.
+- Migrasi: `docker exec rt-finance-backend npm run migrate up` (dbmate).
+- Cutover dari Supabase: lihat `docs/rt-finance.md` di repo setupvps.
+
 ## Environment
 
 Lihat [`.env.example`](.env.example). Di luar `NODE_ENV=production`, koneksi ke database selain localhost ditolak (hindari menulis ke DB produksi tanpa sengaja); set `ALLOW_REMOTE_DB=1` kalau memang perlu.

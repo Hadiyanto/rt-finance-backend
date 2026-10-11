@@ -1,0 +1,12 @@
+node_modules
+.env
+.env.*
+!.env.example
+test
+uploads
+eng.traineddata
+*.traineddata
+fix-db.js
+test-db.js
+.git
+.cursor

@@ -7,7 +7,9 @@ const MAX_ATTEMPTS = 3;
 
 async function tesseractRecognize(image) {
   const Tesseract = require("tesseract.js");
-  const { data } = await Tesseract.recognize(image, "eng");
+  // TESSERACT_CACHE_PATH: folder (volume di Docker) untuk data bahasa yang diunduh sekali saja
+  const options = process.env.TESSERACT_CACHE_PATH ? { cachePath: process.env.TESSERACT_CACHE_PATH } : {};
+  const { data } = await Tesseract.recognize(image, "eng", options);
   return data.text;
 }
 

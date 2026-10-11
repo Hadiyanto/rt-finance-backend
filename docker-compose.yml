@@ -1,0 +1,49 @@
+# Backend di VPS, satu network Docker dengan Postgres bersama ("shared-postgres" di network "backend",
+# dari compose terpisah di repo setupvps). Jalankan Postgres itu dulu, lalu:
+#
+#   docker compose up -d --build
+#   docker exec rt-finance-backend npm run migrate up      # migrasi skema (dbmate)
+#
+# Variabel dari rt-finance-backend/.env (lihat .env.example). Untuk Docker tambahkan di sana:
+#
+#   DOCKER_DATABASE_URL=postgresql://postgres:<password, URL-encoded>@shared-postgres:5432/rt_db?sslmode=disable
+#
+# Karakter khusus di password di-URL-encode (! → %21, @ → %40, # → %23). Di dalam network host-nya
+# nama container "shared-postgres" port 5432. Untuk development lokal pakai docker-compose.dev.yml.
+
+services:
+  backend:
+    build:
+      context: .
+    container_name: rt-finance-backend
+    env_file:
+      - ./.env
+    environment:
+      # Nilai di sini menimpa .env.
+      NODE_ENV: production
+      DATABASE_URL: ${DOCKER_DATABASE_URL:?tambahkan DOCKER_DATABASE_URL di rt-finance-backend/.env (lihat atas docker-compose.yml)}
+      PORT: 3000
+      CORS_ORIGINS: ${DOCKER_CORS_ORIGINS:-https://gmm-rt001.ruangin.xyz}
+      # Cloudflare + nginx di depan app
+      TRUST_PROXY: ${TRUST_PROXY:-2}
+      TESSERACT_CACHE_PATH: /app/tessdata
+    ports:
+      # Host port 6001 (RT memakai 6xxx), 127.0.0.1 saja; nginx (repo setupvps: nginx/rt/) melayaninya
+      # sebagai https://api-gmm-rt001.ruangin.xyz.
+      - "127.0.0.1:${BACKEND_PORT:-6001}:3000"
+    volumes:
+      # data bahasa OCR diunduh sekali, tidak hilang saat container dibuat ulang
+      - tessdata:/app/tessdata
+    networks:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  tessdata:
+    name: rt-finance-tessdata
+
+networks:
+  backend:
+    # Dibuat oleh compose Postgres bersama (networks.backend.name: backend).
+    external: true
+    name: backend
