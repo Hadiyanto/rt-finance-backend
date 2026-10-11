@@ -232,4 +232,77 @@ async function feeSnapshot(period, userId) {
 
 const feeSnapshotPreview = async (period) => strip(await buildPreview(period));
 
-module.exports = { categories, list, create, review, feeSnapshotPreview, feeSnapshot };
+/**
+ * Dana iuran mengendap: iuran yang sudah disetujui (uang sudah diterima) tapi belum tercatat di kas.
+ * Per bulan = iuran disetujui − pemasukan snapshot yang sudah tercatat. Mencakup bulan setelah snapshot
+ * terakhir (mis. snapshot terakhir Sep → Okt, Nov, … tahun berikutnya) dan iuran telat untuk bulan yang
+ * sudah di-snapshot tapi susulannya belum dicatat.
+ */
+async function heldFees() {
+  const { rows } = await db.query(
+    `WITH collected AS (
+       SELECT pi.period, m.category_code, sum(fpc.amount) AS amount, count(DISTINCT pi.id) AS items
+       FROM payment_item pi
+       JOIN payment p ON p.id = pi.payment_id AND p.status = 'APPROVED'
+       JOIN fee_plan_component fpc ON fpc.fee_plan_id = pi.fee_plan_id
+       JOIN fee_ledger_mapping m ON m.component = fpc.component
+       WHERE pi.kind = 'MONTHLY_FEE' AND pi.voided_at IS NULL
+       GROUP BY pi.period, m.category_code
+     ),
+     recorded AS (
+       SELECT e.fee_period AS period, c.code AS category_code, sum(e.amount) AS amount
+       FROM ledger_entry e
+       JOIN ledger_category c ON c.id = e.category_id
+       WHERE e.ref_type = 'FEE_SNAPSHOT' AND e.status = 'APPROVED' AND e.direction = 'IN'
+       GROUP BY e.fee_period, c.code
+     ),
+     held AS (
+       SELECT col.period, col.category_code, col.amount - coalesce(rec.amount, 0) AS amount
+       FROM collected col
+       LEFT JOIN recorded rec ON rec.period = col.period AND rec.category_code = col.category_code
+     ),
+     houses AS (
+       SELECT pi.period, count(*) AS paid_houses
+       FROM payment_item pi
+       JOIN payment p ON p.id = pi.payment_id AND p.status = 'APPROVED'
+       WHERE pi.kind = 'MONTHLY_FEE' AND pi.voided_at IS NULL
+       GROUP BY pi.period
+     )
+     SELECT h.period,
+            sum(h.amount)::int AS total,
+            coalesce(sum(h.amount) FILTER (WHERE h.category_code = 'FEE_KAS_RT'), 0)::int AS kept,
+            coalesce(sum(h.amount) FILTER (WHERE h.category_code <> 'FEE_KAS_RT'), 0)::int AS payout,
+            ho.paid_houses
+     FROM held h
+     JOIN houses ho ON ho.period = h.period
+     WHERE h.amount > 0
+       -- bulan sebelum snapshot pertama = sebelum kas iuran dicatat (sudah termasuk saldo awal)
+       AND h.period >= coalesce((SELECT min(fee_period) FROM ledger_entry WHERE ref_type = 'FEE_SNAPSHOT'), h.period)
+     GROUP BY h.period, ho.paid_houses
+     ORDER BY h.period`
+  );
+  const { rows: [{ last }] } = await db.query(
+    "SELECT max(fee_period) AS last FROM ledger_entry WHERE ref_type = 'FEE_SNAPSHOT' AND status = 'APPROVED'"
+  );
+
+  const months = rows.map((r) => ({
+    period: r.period,
+    label: periodLabel(r.period),
+    // false = bulan yang sudah di-snapshot; ini iuran telat yang belum dicatat susulan
+    afterLastSnapshot: last == null || r.period > last,
+    paidHouses: r.paid_houses,
+    total: r.total,
+    kept: r.kept,
+    payout: r.payout,
+  }));
+  return {
+    lastSnapshotPeriod: last,
+    lastSnapshotLabel: last ? periodLabel(last) : null,
+    total: months.reduce((s, m) => s + m.total, 0),
+    kept: months.reduce((s, m) => s + m.kept, 0),
+    payout: months.reduce((s, m) => s + m.payout, 0),
+    months,
+  };
+}
+
+module.exports = { categories, list, create, review, feeSnapshotPreview, feeSnapshot, heldFees };

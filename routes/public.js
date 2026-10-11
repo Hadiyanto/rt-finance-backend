@@ -106,6 +106,11 @@ router.get("/ledger", readLimiter, async (req, res) => {
   res.json(await ledger.list());
 });
 
+// iuran yang sudah dibayar warga tapi belum tercatat di kas (ringkasan per bulan, tanpa nama)
+router.get("/ledger/held-fees", readLimiter, async (req, res) => {
+  res.json(await ledger.heldFees());
+});
+
 router.get("/ledger/categories", readLimiter, async (req, res) => {
   res.json({ data: await ledger.categories() });
 });

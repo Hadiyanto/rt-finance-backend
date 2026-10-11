@@ -140,3 +140,55 @@ test("kategori sistem iuran & setoran tidak bisa dipakai untuk input manual", as
     assert.equal(res.body.code, "SYSTEM_CATEGORY");
   }
 });
+
+// === Dana iuran mengendap ===
+
+test("mengendap: iuran disetujui yang belum tercatat di kas, bergeser setelah snapshot", async () => {
+  const token = await ctx.login();
+  const held = async () => (await ctx.api("GET", "/api/public/ledger/held-fees")).body;
+
+  // belum ada snapshot sama sekali → semua iuran disetujui dihitung
+  let h = await held();
+  assert.equal(h.lastSnapshotPeriod, null);
+  assert.deepEqual(h.months.map((m) => [m.period, m.total]), [["2026-01", 210000]]);
+
+  // snapshot Januari → Januari tidak lagi mengendap
+  await ctx.api("POST", "/api/admin/ledger/fee-snapshot", { period: "2026-01" }, token);
+  h = await held();
+  assert.equal(h.lastSnapshotPeriod, "2026-01");
+  assert.equal(h.total, 0);
+
+  // A1/1 bayar di muka Mar–Apr → mengendap sampai bulannya di-snapshot
+  const prepaid = await ctx.api("POST", "/api/public/payments", {
+    payerName: "Budi Santoso", reportedAmount: 420000, proofUrl: PROOF,
+    items: [{ houseId: 1, period: "2026-03" }, { houseId: 1, period: "2026-04" }],
+  });
+  await ctx.api("POST", `/api/admin/payments/${prepaid.body.paymentId}/approve`, {}, token);
+  // A1/2 bayar Januari (telat, setelah Januari di-snapshot)
+  const late = await ctx.api("POST", "/api/public/payments", {
+    payerName: "Budi Santoso", reportedAmount: 210000, proofUrl: PROOF, items: [{ houseId: 2, period: "2026-01" }],
+  });
+  await ctx.api("POST", `/api/admin/payments/${late.body.paymentId}/approve`, {}, token);
+
+  h = await held();
+  assert.deepEqual(
+    h.months.map((m) => [m.period, m.total, m.afterLastSnapshot]),
+    [["2026-01", 210000, false], ["2026-03", 210000, true], ["2026-04", 210000, true]]
+  );
+  assert.equal(h.total, 630000);
+  assert.equal(h.kept, 3 * JAN_POSTS.FEE_KAS_RT, "bagian Kas + Agama RT");
+  assert.equal(h.kept + h.payout, h.total);
+
+  // laporan yang belum disetujui tidak dihitung (uang belum diverifikasi)
+  await ctx.api("POST", "/api/public/payments", {
+    payerName: "Budi Santoso", reportedAmount: 210000, proofUrl: PROOF, items: [{ houseId: 1, period: "2026-05" }],
+  });
+  assert.equal((await held()).total, 630000);
+
+  // susulan Januari + snapshot Maret → tinggal April
+  await ctx.api("POST", "/api/admin/ledger/fee-snapshot", { period: "2026-01" }, token);
+  await ctx.api("POST", "/api/admin/ledger/fee-snapshot", { period: "2026-03" }, token);
+  h = await held();
+  assert.equal(h.lastSnapshotPeriod, "2026-03");
+  assert.deepEqual(h.months.map((m) => [m.period, m.total]), [["2026-04", 210000]]);
+});
