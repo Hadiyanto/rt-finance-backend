@@ -1,9 +1,14 @@
-// Kas RT: pemasukan/pengeluaran manual oleh bendahara.
+// Kas RT: pemasukan/pengeluaran manual oleh bendahara + snapshot iuran bulanan sebagai pemasukan.
 const db = require("../lib/db");
 const { AppError } = require("../lib/errors");
+const { currentPeriod } = require("../lib/period");
+
+const MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+const periodLabel = (period) => `${MONTHS[Number(period.slice(5)) - 1]} ${period.slice(0, 4)}`;
 
 async function categories() {
-  const { rows } = await db.query("SELECT id, name, direction FROM ledger_category ORDER BY direction, id");
+  // code != null = kategori sistem (diisi snapshot iuran), tidak untuk input manual
+  const { rows } = await db.query("SELECT id, code, name, direction FROM ledger_category ORDER BY direction, code NULLS LAST, id");
   return rows;
 }
 
@@ -16,6 +21,8 @@ const toDto = (r) => ({
   description: r.description,
   proofUrl: r.proof_url,
   status: r.status,
+  feePeriod: r.fee_period,
+  source: r.ref_type === "FEE_SNAPSHOT" ? "FEE_SNAPSHOT" : "MANUAL",
   createdByName: r.created_by_name,
   approvedByName: r.approved_by_name,
   approvedAt: r.approved_at,
@@ -45,9 +52,12 @@ async function list({ includeUnapproved = false } = {}) {
 }
 
 async function create({ entryDate, direction, amount, categoryId, description, proofUrl }, userId) {
-  const { rows: [cat] } = await db.query("SELECT direction FROM ledger_category WHERE id = $1", [categoryId]);
+  const { rows: [cat] } = await db.query("SELECT direction, code FROM ledger_category WHERE id = $1", [categoryId]);
   if (!cat) {
     throw new AppError(422, "UNKNOWN_CATEGORY", "Kategori tidak ditemukan");
+  }
+  if (cat.code) {
+    throw new AppError(422, "SYSTEM_CATEGORY", "Kategori ini diisi otomatis lewat snapshot iuran, bukan input manual");
   }
   if (cat.direction !== direction) {
     throw new AppError(422, "CATEGORY_MISMATCH", "Kategori tidak sesuai dengan jenis transaksi");
@@ -81,4 +91,122 @@ async function review(id, userId, status) {
   return getById(id);
 }
 
-module.exports = { categories, list, create, review };
+// === Snapshot iuran → kas ===
+
+/**
+ * Bandingkan iuran yang sudah disetujui untuk 1 periode (per pos kas) dengan yang sudah tercatat di kas.
+ * toAdd = selisih yang akan dicatat saat snapshot; legacyEntries = entri iuran manual lama yang akan di-VOID.
+ */
+async function feeSnapshotPreview(period, client = db.pool) {
+  const { rows: posts } = await client.query(
+    `WITH collected AS (
+       -- sama dengan /report-iuran: nominal komponen dari tarif tiap item
+       SELECT m.category_code, sum(fpc.amount) AS amount
+       FROM payment_item pi
+       JOIN payment p ON p.id = pi.payment_id AND p.status = 'APPROVED'
+       JOIN fee_plan_component fpc ON fpc.fee_plan_id = pi.fee_plan_id
+       JOIN fee_ledger_mapping m ON m.component = fpc.component
+       WHERE pi.kind = 'MONTHLY_FEE' AND pi.period = $1 AND pi.voided_at IS NULL
+       GROUP BY m.category_code
+     ),
+     recorded AS (
+       SELECT category_id, sum(amount) AS amount
+       FROM ledger_entry
+       WHERE ref_type = 'FEE_SNAPSHOT' AND fee_period = $1 AND status = 'APPROVED'
+       GROUP BY category_id
+     )
+     SELECT c.id AS category_id, c.code, c.name,
+            coalesce(col.amount, 0)::int AS collected,
+            coalesce(rec.amount, 0)::int AS recorded
+     FROM ledger_category c
+     LEFT JOIN collected col ON col.category_code = c.code
+     LEFT JOIN recorded rec ON rec.category_id = c.id
+     WHERE c.code LIKE 'FEE_%'
+     ORDER BY c.id`,
+    [period]
+  );
+
+  const { rows: legacy } = await client.query(
+    `SELECT id, entry_date, amount, description FROM ledger_entry
+     WHERE ref_type = 'LEGACY_FEE_INCOME' AND fee_period = $1 AND status = 'APPROVED'
+     ORDER BY id`,
+    [period]
+  );
+
+  const items = posts.map((r) => ({
+    categoryId: r.category_id,
+    code: r.code,
+    name: r.name,
+    collected: r.collected,
+    recorded: r.recorded,
+    toAdd: r.collected - r.recorded,
+  }));
+
+  return {
+    period,
+    label: periodLabel(period),
+    alreadySnapshotted: items.some((i) => i.recorded > 0),
+    items,
+    collectedTotal: items.reduce((s, i) => s + i.collected, 0),
+    recordedTotal: items.reduce((s, i) => s + i.recorded, 0),
+    toAddTotal: items.reduce((s, i) => s + Math.max(i.toAdd, 0), 0),
+    legacyEntries: legacy.map((e) => ({ id: e.id, entryDate: e.entry_date, amount: e.amount, description: e.description })),
+  };
+}
+
+function lastDayOfMonth(period) {
+  const [y, m] = period.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m, 0));
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * Catat iuran 1 periode ke kas (langsung APPROVED). Bisa diulang: hanya selisih yang ditambahkan
+ * sebagai entri "susulan". Entri iuran manual lama periode itu di-VOID.
+ */
+async function feeSnapshot(period, userId) {
+  if (period > currentPeriod()) {
+    throw new AppError(422, "FUTURE_PERIOD", "Bulan yang dipilih belum berjalan");
+  }
+  return db.withTransaction(async (client) => {
+    // satu snapshot per periode pada satu waktu
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('fee-snapshot:' || $1))", [period]);
+    const preview = await feeSnapshotPreview(period, client);
+
+    const negative = preview.items.filter((i) => i.toAdd < 0);
+    if (negative.length > 0) {
+      throw new AppError(409, "RECORDED_EXCEEDS_COLLECTED", "Jumlah di kas lebih besar dari iuran yang disetujui; cek entri kas bulan ini", {
+        items: negative.map((i) => i.name),
+      });
+    }
+
+    const toAdd = preview.items.filter((i) => i.toAdd > 0);
+    if (toAdd.length === 0 && preview.legacyEntries.length === 0) {
+      return { ...preview, created: [], voided: [] };
+    }
+
+    const created = [];
+    for (const item of toAdd) {
+      const suffix = item.recorded > 0 ? " (susulan)" : "";
+      const { rows: [row] } = await client.query(
+        `INSERT INTO ledger_entry (entry_date, direction, amount, category_id, description, status,
+                                   ref_type, fee_period, created_by, approved_by, approved_at)
+         VALUES ($1, 'IN', $2, $3, $4, 'APPROVED', 'FEE_SNAPSHOT', $5, $6, $6, now())
+         RETURNING id`,
+        [lastDayOfMonth(period), item.toAdd, item.categoryId, `Iuran ${preview.label} – ${item.name.replace(/^Iuran: /, "")}${suffix}`, period, userId]
+      );
+      created.push(row.id);
+    }
+
+    const { rows: voided } = await client.query(
+      `UPDATE ledger_entry SET status = 'VOID', approved_by = $2, approved_at = now()
+       WHERE ref_type = 'LEGACY_FEE_INCOME' AND fee_period = $1 AND status = 'APPROVED'
+       RETURNING id`,
+      [period, userId]
+    );
+
+    return { ...(await feeSnapshotPreview(period, client)), created, voided: voided.map((v) => v.id) };
+  });
+}
+
+module.exports = { categories, list, create, review, feeSnapshotPreview, feeSnapshot };

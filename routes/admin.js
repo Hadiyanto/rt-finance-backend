@@ -86,6 +86,18 @@ router.post("/ledger", async (req, res) => {
   res.status(201).json(await ledger.create(ledgerBody.parse(req.body), req.user.id));
 });
 
+// Snapshot iuran → kas: pratinjau lalu catat (bisa diulang, hanya selisih yang ditambahkan)
+const periodSchema = z.string().regex(PERIOD_RE, "Format periode YYYY-MM");
+
+router.get("/ledger/fee-snapshot", async (req, res) => {
+  res.json(await ledger.feeSnapshotPreview(periodSchema.parse(req.query.period)));
+});
+
+router.post("/ledger/fee-snapshot", async (req, res) => {
+  const { period } = z.object({ period: periodSchema }).parse(req.body ?? {});
+  res.json(await ledger.feeSnapshot(period, req.user.id));
+});
+
 router.post("/ledger/:id/approve", async (req, res) => {
   res.json(await ledger.review(idParam.parse(req.params.id), req.user.id, "APPROVED"));
 });

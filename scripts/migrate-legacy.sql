@@ -231,6 +231,13 @@ JOIN legacy."Category" c ON c.id = e."categoryId"
 JOIN legacy."TransactionType" tt ON tt.id = e."typeId"
 JOIN ledger_category lc ON lc.name = c.name AND lc.direction = CASE tt.name WHEN 'income' THEN 'IN' ELSE 'OUT' END;
 
+-- Pemasukan iuran bulanan yang dulu dicatat manual (hanya bagian RT). Ditandai per periode supaya
+-- diganti (VOID) oleh snapshot iuran → kas bulan itu. "Kas 2025" (FinanceEntry:4) adalah saldo awal, tidak ditandai.
+UPDATE ledger_entry e
+SET ref_type = 'LEGACY_FEE_INCOME', fee_period = m.period
+FROM (VALUES ('FinanceEntry:5', '2026-01'), ('FinanceEntry:9', '2026-02'), ('FinanceEntry:13', '2026-03')) AS m (ref, period)
+WHERE e.legacy_ref = m.ref;
+
 -- === Rekonsiliasi: batalkan semua kalau ada yang tidak cocok ===
 DO $$
 DECLARE
@@ -288,6 +295,10 @@ BEGIN
 
   IF EXISTS (SELECT 1 FROM v_house_current WHERE status IS NULL) THEN
     RAISE EXCEPTION 'Ada rumah tanpa riwayat kondisi (house_occupancy)';
+  END IF;
+
+  IF (SELECT count(*) FROM ledger_entry WHERE ref_type = 'LEGACY_FEE_INCOME') <> 3 THEN
+    RAISE EXCEPTION 'Entri iuran manual lama (Kas Jan/Feb/Mar 2026) tidak ditemukan';
   END IF;
 
   -- di setiap awal periode tarif, status rumah harus sesuai aturan (KEAMANAN_100 = kosong)

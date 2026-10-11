@@ -129,7 +129,9 @@ test("kas publik: hanya transaksi disetujui, saldo dari yang disetujui", async (
   assert.equal(body.data[0].entryDate, "2026-01-12", "tanggal tetap string, urut terbaru dulu");
 
   const cats = await ctx.api("GET", "/api/public/ledger/categories");
-  assert.deepEqual(cats.body.data.map((c) => c.direction), ["IN", "OUT"]);
+  const manual = cats.body.data.filter((c) => !c.code);
+  assert.deepEqual(manual.map((c) => c.direction), ["IN", "OUT"]);
+  assert.equal(cats.body.data.filter((c) => c.code).length, 4, "4 kategori sistem iuran");
 });
 
 test("kas admin: tambah, kategori harus cocok, approve sekali, saldo berubah", async () => {
@@ -138,14 +140,14 @@ test("kas admin: tambah, kategori harus cocok, approve sekali, saldo berubah", a
 
   const mismatch = await ctx.api(
     "POST", "/api/admin/ledger",
-    { entryDate: "2026-03-01", direction: "IN", amount: 50000, categoryId: 2, description: "Salah kategori" },
+    { entryDate: "2026-03-01", direction: "IN", amount: 50000, categoryId: 102, description: "Salah kategori" },
     token
   );
   assert.equal(mismatch.status, 422);
 
   const created = await ctx.api(
     "POST", "/api/admin/ledger",
-    { entryDate: "2026-03-01", direction: "OUT", amount: 50000, categoryId: 2, description: "Potong rumput" },
+    { entryDate: "2026-03-01", direction: "OUT", amount: 50000, categoryId: 102, description: "Potong rumput" },
     token
   );
   assert.equal(created.status, 201);
@@ -161,7 +163,7 @@ test("kas admin: tambah, kategori harus cocok, approve sekali, saldo berubah", a
 
 test("kas admin: tanpa login tidak bisa menambah", async () => {
   const res = await ctx.api("POST", "/api/admin/ledger", {
-    entryDate: "2026-03-01", direction: "OUT", amount: 1, categoryId: 2, description: "x",
+    entryDate: "2026-03-01", direction: "OUT", amount: 1, categoryId: 102, description: "x",
   });
   assert.equal(res.status, 401);
 });

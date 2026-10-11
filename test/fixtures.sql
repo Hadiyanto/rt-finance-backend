@@ -5,11 +5,11 @@
 --   A1/10 : untuk cek urutan nomor rumah (10 setelah 2)
 --   user: bendahara@rt.test (bendahara), rt@rt.test (rt), nonaktif@rt.test (tidak aktif); password semua 'rahasia123'
 --   kas: saldo awal 500.000 (APPROVED), pengeluaran 150.000 (APPROVED), pengeluaran 99.000 (PENDING)
-TRUNCATE ledger_entry, ledger_category, payment_item, payment, house_fee_plan, house_occupancy, house, app_user
-  RESTART IDENTITY CASCADE;
+--   kategori sistem iuran (FEE_*) berasal dari migrasi dan tidak dihapus
+TRUNCATE ledger_entry, payment_item, payment, house_fee_plan, house_occupancy, house, app_user RESTART IDENTITY CASCADE;
 
-INSERT INTO ledger_category (id, name, direction) VALUES (1, 'Iuran Bulanan', 'IN'), (2, 'Operasional', 'OUT');
-SELECT setval(pg_get_serial_sequence('ledger_category', 'id'), 2);
+DELETE FROM ledger_category WHERE code IS NULL;
+INSERT INTO ledger_category (id, name, direction) VALUES (101, 'Iuran Bulanan', 'IN'), (102, 'Operasional', 'OUT');
 
 INSERT INTO app_user (id, name, email, password_hash, role, is_active) VALUES
   (1, 'Bendahara', 'bendahara@rt.test', '$2b$10$5MLj.tkPKg/xdOElz73oVOwKcX6TVAIGeUGtOMilbBxIss1Ux8YO.', 'bendahara', true),
@@ -44,6 +44,6 @@ FROM (VALUES (1, '2026-01', NULL::timestamptz), (2, '2026-02', now())) AS v (pay
 JOIN fee_plan fp ON fp.code = 'IURAN_210';
 
 INSERT INTO ledger_entry (entry_date, direction, amount, category_id, description, status) VALUES
-  ('2026-01-05', 'IN',  500000, 1, 'Kas Desember 2025', 'APPROVED'),
-  ('2026-01-12', 'OUT', 150000, 2, 'Lampu jalan',       'APPROVED'),
-  ('2026-02-01', 'OUT',  99000, 2, 'Belum disetujui',   'PENDING');
+  ('2026-01-05', 'IN',  500000, 101, 'Kas Desember 2025', 'APPROVED'),
+  ('2026-01-12', 'OUT', 150000, 102, 'Lampu jalan',       'APPROVED'),
+  ('2026-02-01', 'OUT',  99000, 102, 'Belum disetujui',   'PENDING');
