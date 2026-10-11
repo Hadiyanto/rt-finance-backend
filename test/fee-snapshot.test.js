@@ -192,3 +192,42 @@ test("mengendap: iuran disetujui yang belum tercatat di kas, bergeser setelah sn
   assert.equal(h.lastSnapshotPeriod, "2026-03");
   assert.deepEqual(h.months.map((m) => [m.period, m.total]), [["2026-04", 210000]]);
 });
+
+// === THR → kas ===
+
+test("THR: snapshot mencatat pemasukan THR + setoran THR ke RW (saldo tetap), susulan hanya selisih", async () => {
+  const token = await ctx.login();
+  const report = async (houseId, amount) => {
+    const r = await ctx.api("POST", "/api/public/thr", { payerName: "Budi", houseId, year: 2026, amount, proofUrl: PROOF });
+    await ctx.api("POST", `/api/admin/payments/${r.body.paymentId}/approve`, {}, token);
+  };
+  const balance = async () => (await ctx.api("GET", "/api/public/ledger")).body.balance;
+  const before = await balance();
+
+  await report(1, 172000);
+  const preview = await ctx.api("GET", "/api/admin/ledger/thr-snapshot?year=2026", null, token);
+  assert.deepEqual(preview.body, { year: 2026, houses: 1, collected: 172000, recorded: 0, toAdd: 172000 });
+
+  const first = await ctx.api("POST", "/api/admin/ledger/thr-snapshot", { year: 2026, entryDate: "2026-03-10" }, token);
+  assert.equal(first.status, 200);
+  assert.equal(first.body.created.length, 2);
+  const { rows } = await db.query(
+    "SELECT entry_date, direction, amount, description, status FROM ledger_entry WHERE ref_type = 'THR_SNAPSHOT' ORDER BY id"
+  );
+  assert.deepEqual(rows, [
+    { entry_date: "2026-03-10", direction: "IN", amount: 172000, description: "THR 2026 dari warga (1 rumah)", status: "APPROVED" },
+    { entry_date: "2026-03-10", direction: "OUT", amount: 172000, description: "Setoran THR 2026 ke RW", status: "APPROVED" },
+  ]);
+  assert.equal(await balance(), before, "THR hanya titip lewat");
+
+  assert.equal((await ctx.api("POST", "/api/admin/ledger/thr-snapshot", { year: 2026 }, token)).body.created.length, 0);
+
+  await report(2, 200000);
+  const second = await ctx.api("POST", "/api/admin/ledger/thr-snapshot", { year: 2026 }, token);
+  assert.equal(second.body.created.length, 2);
+  assert.equal(second.body.recorded, 372000);
+  const { rows: late } = await db.query("SELECT amount FROM ledger_entry WHERE description LIKE '%(susulan)' AND ref_type = 'THR_SNAPSHOT'");
+  assert.deepEqual(late.map((r) => r.amount), [200000, 200000]);
+
+  assert.equal((await ctx.api("POST", "/api/admin/ledger/thr-snapshot", { year: 2026 })).status, 401);
+});

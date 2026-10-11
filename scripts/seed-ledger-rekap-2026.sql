@@ -3,17 +3,14 @@
 --
 -- Semua entri baru berstatus PENDING: direview & di-approve bendahara di /pengeluaran setelah dicocokkan
 -- dengan rekening. Setoran iuran ke RW / KKM / yayasan sampah TIDAK ada di sini (sudah tercatat otomatis
--- lewat snapshot iuran). Aman dijalankan ulang (setiap entri ditandai legacy_ref 'Rekap2026:<kode>').
+-- lewat snapshot iuran), begitu juga THR 2026 (snapshot THR, lihat backfill-fee-snapshots.js --thr). Aman dijalankan ulang (setiap entri ditandai legacy_ref 'Rekap2026:<kode>').
 --   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f scripts/seed-ledger-rekap-2026.sql
 
 \set ON_ERROR_STOP on
 BEGIN;
 
 -- kategori manual tambahan
-INSERT INTO ledger_category (name, direction) VALUES
-  ('THR', 'IN'),
-  ('Setoran THR', 'OUT'),
-  ('Kegiatan RW', 'OUT')
+INSERT INTO ledger_category (name, direction) VALUES ('Kegiatan RW', 'OUT')
 ON CONFLICT (name, direction) DO NOTHING;
 
 WITH seed (ref, entry_date, direction, amount, category, description) AS (VALUES
@@ -27,10 +24,6 @@ WITH seed (ref, entry_date, direction, amount, category, description) AS (VALUES
   ('Rekap2026:bank-2026-07', DATE '2026-07-31', 'OUT',   19737, 'Administrasi', 'Biaya bank Juli 2026 (admin, BI-FAST, ATM, PPh bunga)'),
   ('Rekap2026:bank-2026-08', DATE '2026-08-31', 'OUT',   21941, 'Administrasi', 'Biaya bank Agustus 2026 (admin, BI-FAST, ATM, PPh bunga)'),
   ('Rekap2026:bank-2026-09', DATE '2026-09-30', 'OUT',   23279, 'Administrasi', 'Biaya bank September 2026 (admin, ATM, PPh bunga)'),
-
-  -- THR: diterima dari warga lalu diteruskan ke RW (saldo tetap)
-  ('Rekap2026:thr-in',       DATE '2026-03-10', 'IN',  8062000, 'THR',          'THR 2026 dari warga (47 rumah)'),
-  ('Rekap2026:thr-out',      DATE '2026-03-10', 'OUT', 8062000, 'Setoran THR',  'Setoran THR 2026 ke RW 016'),
 
   -- pengeluaran RT yang belum ada di kas
   ('Rekap2026:rw-2026-07-06', DATE '2026-07-06', 'OUT', 2000000, 'Kegiatan RW',  'Kegiatan RW (transfer ke RW 016)'),
@@ -56,7 +49,7 @@ WHERE legacy_ref = 'FinanceEntry:12' AND entry_date <> DATE '2026-07-20';
 
 DO $$
 BEGIN
-  IF (SELECT count(*) FROM ledger_entry WHERE legacy_ref LIKE 'Rekap2026:%') <> 19 THEN
+  IF (SELECT count(*) FROM ledger_entry WHERE legacy_ref LIKE 'Rekap2026:%') <> 17 THEN
     RAISE EXCEPTION 'Seed rekap 2026 tidak lengkap (kategori tidak ditemukan?)';
   END IF;
 END $$;

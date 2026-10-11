@@ -3,7 +3,7 @@
 #   1. data lama → schema `legacy`
 #   2. skema v2 (dbmate) → schema `public`
 #   3. migrasi data legacy → v2 (scripts/migrate-legacy.sql, termasuk koreksi bendahara)
-#   4. iuran Des 2025 s/d bulan lalu dicatat ke kas (scripts/backfill-fee-snapshots.js)
+#   4. iuran Des 2025 s/d bulan lalu + THR 2026 dicatat ke kas (scripts/backfill-fee-snapshots.js)
 #   5. seed kas dari rekening koran 2026 (scripts/seed-ledger-rekap-2026.sql, PENDING)
 #   6. akun admin khusus lokal: dev@local.test / rahasia123
 # Pakai: scripts/db-reset-local.sh [path/ke/file.dump]   (default: dump terbaru di ~/backups/rt-finance)
@@ -53,7 +53,8 @@ echo "✓ data lama dimigrasi"
 
 # 4. iuran Des 2025 s/d bulan lalu dicatat ke kas (sama seperti tombol "Iuran" di /pengeluaran)
 echo "Mencatat iuran ke kas:"
-DATABASE_URL="$LOCAL" node scripts/backfill-fee-snapshots.js
+# THR 2026 ditransfer ke RW tanggal 10 Mar 2026 (rekening koran)
+DATABASE_URL="$LOCAL" node scripts/backfill-fee-snapshots.js --thr 2026:2026-03-10
 echo "✓ iuran tercatat di kas"
 
 # 5. transaksi dari rekap rekening koran 2026 (PENDING, untuk direview)

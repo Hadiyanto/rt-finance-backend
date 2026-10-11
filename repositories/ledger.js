@@ -232,6 +232,60 @@ async function feeSnapshot(period, userId) {
 
 const feeSnapshotPreview = async (period) => strip(await buildPreview(period));
 
+// === Snapshot THR → kas ===
+
+async function thrPreview(year, client = db.pool) {
+  const { rows: [r] } = await client.query(
+    `SELECT
+       (SELECT coalesce(sum(pi.amount), 0) FROM payment_item pi
+          JOIN payment p ON p.id = pi.payment_id AND p.status = 'APPROVED'
+        WHERE pi.kind = 'THR' AND pi.period = $1 AND pi.voided_at IS NULL)::int AS collected,
+       (SELECT count(*) FROM payment_item pi
+          JOIN payment p ON p.id = pi.payment_id AND p.status = 'APPROVED'
+        WHERE pi.kind = 'THR' AND pi.period = $1 AND pi.voided_at IS NULL)::int AS houses,
+       (SELECT coalesce(sum(amount), 0) FROM ledger_entry
+        WHERE ref_type = 'THR_SNAPSHOT' AND thr_year = $2 AND direction = 'IN' AND status = 'APPROVED')::int AS recorded`,
+    [String(year), year]
+  );
+  return { year, houses: r.houses, collected: r.collected, recorded: r.recorded, toAdd: r.collected - r.recorded };
+}
+
+/**
+ * Catat THR 1 tahun ke kas: pemasukan "THR" + setoran THR ke RW dengan nominal sama (langsung APPROVED).
+ * Bisa diulang: hanya selisih (THR yang disetujui setelahnya) yang ditambahkan sebagai susulan.
+ */
+async function thrSnapshot(year, userId, entryDate) {
+  return db.withTransaction(async (client) => {
+    await client.query("SELECT pg_advisory_xact_lock(hashtext('thr-snapshot:' || $1))", [String(year)]);
+    const preview = await thrPreview(year, client);
+    if (preview.toAdd < 0) {
+      throw new AppError(409, "RECORDED_EXCEEDS_COLLECTED", "THR di kas lebih besar dari THR yang disetujui; cek entri kas THR");
+    }
+    if (preview.toAdd === 0) {
+      return { ...preview, created: [] };
+    }
+
+    const { rows: cats } = await client.query("SELECT id, code FROM ledger_category WHERE code IN ('THR_IN', 'SETOR_THR')");
+    const cat = Object.fromEntries(cats.map((c) => [c.code, c.id]));
+    const suffix = preview.recorded > 0 ? " (susulan)" : "";
+    const created = [];
+    for (const [direction, code, description] of [
+      ["IN", "THR_IN", `THR ${year} dari warga (${preview.houses} rumah)${suffix}`],
+      ["OUT", "SETOR_THR", `Setoran THR ${year} ke RW${suffix}`],
+    ]) {
+      const { rows: [row] } = await client.query(
+        `INSERT INTO ledger_entry (entry_date, direction, amount, category_id, description, status,
+                                   ref_type, thr_year, created_by, approved_by, approved_at)
+         VALUES ($1, $2, $3, $4, $5, 'APPROVED', 'THR_SNAPSHOT', $6, $7, $7, now())
+         RETURNING id`,
+        [entryDate, direction, preview.toAdd, cat[code], description, year, userId]
+      );
+      created.push(row.id);
+    }
+    return { ...(await thrPreview(year, client)), created };
+  });
+}
+
 /**
  * Dana iuran mengendap: iuran yang sudah disetujui (uang sudah diterima) tapi belum tercatat di kas.
  * Per bulan = iuran disetujui − pemasukan snapshot yang sudah tercatat. Mencakup bulan setelah snapshot
@@ -305,4 +359,8 @@ async function heldFees() {
   };
 }
 
-module.exports = { categories, list, create, review, feeSnapshotPreview, feeSnapshot, heldFees };
+module.exports = {
+  categories, list, create, review,
+  feeSnapshotPreview, feeSnapshot, heldFees,
+  thrPreview: (year) => thrPreview(year), thrSnapshot,
+};

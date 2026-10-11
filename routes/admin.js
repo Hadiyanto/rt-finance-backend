@@ -4,7 +4,7 @@ const { z } = require("zod");
 const adminPayments = require("../repositories/adminPayments");
 const reports = require("../repositories/reports");
 const ledger = require("../repositories/ledger");
-const { PERIOD_RE, currentPeriod } = require("../lib/period");
+const { PERIOD_RE, currentPeriod, todayJakarta } = require("../lib/period");
 const { runOcrBatch } = require("../services/ocr");
 const { requireAuth, ADMIN_ROLES } = require("../lib/auth");
 
@@ -96,6 +96,20 @@ router.get("/ledger/fee-snapshot", async (req, res) => {
 router.post("/ledger/fee-snapshot", async (req, res) => {
   const { period } = z.object({ period: periodSchema }).parse(req.body ?? {});
   res.json(await ledger.feeSnapshot(period, req.user.id));
+});
+
+// Snapshot THR → kas (pemasukan THR + setoran THR ke RW)
+const yearSchema = z.coerce.number().int().min(2020).max(2100);
+
+router.get("/ledger/thr-snapshot", async (req, res) => {
+  res.json(await ledger.thrPreview(yearSchema.parse(req.query.year)));
+});
+
+router.post("/ledger/thr-snapshot", async (req, res) => {
+  const { year, entryDate } = z
+    .object({ year: yearSchema, entryDate: z.iso.date().optional() })
+    .parse(req.body ?? {});
+  res.json(await ledger.thrSnapshot(year, req.user.id, entryDate ?? todayJakarta()));
 });
 
 router.post("/ledger/:id/approve", async (req, res) => {
