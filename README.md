@@ -1,113 +1,79 @@
-# RT Finance Backend
+# RT Finance — Backend
 
-Backend service untuk aplikasi RT Finance, bertugas menangani manajemen warga, iuran bulanan (termasuk OCR), dan laporan keuangan.
+API keuangan RT 001/016 Graha Mampang Mas: laporan iuran & THR dari warga (banyak rumah × banyak bulan dalam satu laporan), approval pengurus dengan bantuan OCR, laporan iuran, tunggakan, dan buku kas.
 
-## 🚀 Fitur Utama
+Frontend: [rt-finance-frontend](https://github.com/Hadiyanto/rt-finance-frontend).
 
-*   **Manajemen Warga**: CRUD data warga per blok dan nomor rumah.
-*   **Iuran Bulanan**: Input manual atau **Otomatis via OCR** (struk transfer).
-*   **Laporan Keuangan**: Breakdown pemasukan bulanan real-time.
-*   **Performance**: Mendukung caching Redis untuk respon cepat dan indexing database.
+## Teknologi
 
-## 🛠️ Teknologi
+- Node.js 26, Express 5, `pg` (SQL langsung, tanpa ORM), zod, express-rate-limit
+- PostgreSQL 17, migrasi SQL dengan [dbmate](https://github.com/amacneil/dbmate)
+- Tesseract.js (OCR bukti transfer), Cloudinary (penyimpanan bukti)
+- Test: `node:test` terhadap database test sungguhan
 
-*   **Runtime**: Node.js (Express.js)
-*   **Database**: PostgreSQL (via Neon)
-*   **ORM**: Prisma
-*   **Cache**: Redis (via Upstash)
-*   **OCR**: Tesseract.js
-*   **Storage**: Cloudinary
+## Menjalankan di lokal
 
-## 📋 Prasyarat
+```bash
+npm install
+cp .env.example .env               # isi JWT_SECRET & Cloudinary
+scripts/db-reset-local.sh          # Postgres Docker :5433 + data dari backup produksi
+npm run dev                        # http://localhost:3031
+```
 
-Pastikan Anda telah menginstall:
-*   [Node.js](https://nodejs.org/) (v18+)
-*   Database PostgreSQL
-*   Akun Upstash (untuk Redis)
-*   Akun Cloudinary
+`scripts/db-reset-local.sh` (aman diulang) melakukan:
 
-## ⚙️ Instalasi
+1. restore backup produksi terbaru (`~/backups/rt-finance/*.dump`) ke schema `legacy`;
+2. menjalankan migrasi v2 (`db/migrations`) ke schema `public`;
+3. migrasi data lama → v2 (`scripts/migrate-legacy.sql`, termasuk koreksi bendahara; batal otomatis kalau rekonsiliasi tidak cocok);
+4. mencatat iuran Des 2025 s/d bulan lalu + THR 2026 ke kas (`scripts/backfill-fee-snapshots.js`);
+5. seed kas dari rekening koran 2026 (`scripts/seed-ledger-rekap-2026.sql`, status PENDING);
+6. membuat admin lokal `dev@local.test` / `rahasia123`.
 
-1.  **Clone repository**
-    ```bash
-    git clone <repo-url>
-    cd rt-finance-backend
-    ```
+Laporan perbandingan data lama vs v2: `psql postgres://rt:rt@localhost:5433/rt_finance -f scripts/reconcile.sql`.
 
-2.  **Install dependencies**
-    ```bash
-    npm install
-    ```
+Migrasi manual: `docker compose -f docker-compose.dev.yml run --rm migrate [up|rollback|status|new <nama>]`.
 
-3.  **Setup Environment Variables**
-    Buat file `.env` dan isi konfigurasi berikut:
+## Test
 
-    ```env
-    # App
-    PORT=3000
-    NODE_ENV=development
+```bash
+npm test
+```
 
-    # Database (Prisma)
-    DATABASE_URL="postgresql://user:password@host:port/db?sslmode=require"
+Memakai database `rt_finance_test` di Postgres lokal (dibuat & di-migrate ulang otomatis setiap run). Override dengan `TEST_DATABASE_URL` (harus localhost).
 
-    # Redis (Upstash) - Wajib untuk Caching
-    UPSTASH_REDIS_REST_URL="https://your-upstash-url.upstash.io"
-    UPSTASH_REDIS_REST_TOKEN="your-upstash-token"
+## Struktur
 
-    # Caching Versioning
-    # Ubah versi ini (misal ke v2) untuk memaksa refresh cache daftar warga di semua client
-    RESIDENT_CACHE_VERSION="v1" 
+| Path | Isi |
+|---|---|
+| `index.js` / `app.js` | Start server + jadwal OCR / definisi Express app |
+| `routes/public.js` | API warga tanpa login (`/api/public/*`), rate limited, tanpa data pribadi |
+| `routes/auth.js` | Login & sesi pengurus (`/api/auth/*`) |
+| `routes/admin.js` | API pengurus (`/api/admin/*`, role admin/bendahara) |
+| `repositories/` | Query SQL per domain: rumah, pembayaran, review, laporan, kas |
+| `services/ocr.js` | OCR bukti transfer laporan PENDING → WAITING_APPROVAL |
+| `lib/` | Koneksi DB, auth (JWT), error, periode (Asia/Jakarta), parser nominal OCR |
+| `db/migrations/` | Skema v2 (dbmate) |
+| `scripts/` | Reset DB lokal, migrasi data lama, backfill kas, seed rekening koran, rekonsiliasi |
+| `test/` | Test API (`node:test`) + fixtures |
 
-    # Cloudinary (Upload Gambar)
-    CLOUDINARY_CLOUD_NAME="your-cloud-name"
-    CLOUDINARY_API_KEY="your-api-key"
-    CLOUDINARY_API_SECRET="your-api-secret"
+## Konsep data
 
-    # Security
-    # Digunakan untuk validasi request dari cron job
-    CRON_SECRET="your-secret-key"
-    ```
+- **Rumah** (`house`) adalah unit yang ditagih. Kondisi rumah (dihuni/kosong, nama, HP) dicatat sebagai riwayat di `house_occupancy`; kondisi terkini lewat view `v_house_current`.
+- **Tarif** (`fee_plan` + komponen) berlaku per rumah mulai periode tertentu (`house_fee_plan`). Rumah kosong = `KEAMANAN_100`.
+- **Laporan** (`payment`) = 1 bukti transfer; isinya banyak `payment_item` (1 rumah × 1 bulan, atau THR per tahun). Nominal per bulan dihitung server dari tarif. Satu rumah hanya boleh 1 item aktif per bulan; laporan yang ditolak membuka bulannya lagi.
+- **Periode** selalu teks `YYYY-MM` (zona Asia/Jakarta), bukan timestamp.
+- **Kas** (`ledger_entry`): pemasukan/pengeluaran manual (perlu approve), ditambah pencatatan otomatis dari tombol **Iuran**:
+  - iuran sebulan → 4 pos (Kas + Agama RT, Sampah, Keamanan + Agama RW + Kas RW, KKM RW); 3 pos terakhir otomatis diikuti pengeluaran setoran ke RW/yayasan;
+  - THR setahun → pemasukan THR + setoran THR ke RW;
+  - bisa diulang: hanya selisih (pembayaran telat) yang ditambahkan sebagai susulan.
+- **Iuran mengendap** = iuran disetujui yang belum tercatat di kas (`GET /api/public/ledger/held-fees`).
 
-4.  **Database Migration**
-    ```bash
-    npx prisma migrate dev
-    ```
+## API ringkas
 
-5.  **Jalankan Aplikasi**
-    ```bash
-    node index.js
-    ```
-    Server akan berjalan di `http://localhost:3000`
+Publik: `GET /api/public/houses`, `GET /api/public/house-periods`, `POST /api/public/payments/quote`, `POST /api/public/payments`, `POST /api/public/thr`, `POST /api/public/upload-proof`, `GET /api/public/reports/fee-breakdown`, `GET /api/public/thr/recap`, `GET /api/public/ledger`, `GET /api/public/ledger/categories`, `GET /api/public/ledger/held-fees`.
 
-## ⚡ Optimasi Performa
+Pengurus: `POST /api/auth/login`, `GET /api/auth/me`, `GET|POST /api/admin/payments[/:id/approve|reject]`, `GET /api/admin/arrears`, `GET|POST /api/admin/ledger[/:id/approve|reject]`, `GET|POST /api/admin/ledger/fee-snapshot`, `GET|POST /api/admin/ledger/thr-snapshot`, `POST /api/admin/ocr/run`.
 
-Backend ini telah dioptimasi untuk menangani ribuan data dengan cepat:
+## Environment
 
-1.  **Database Indexing**:
-    Kolom `date` pada tabel `MonthlyFee` telah di-index untuk mempercepat query laporan bulanan.
-
-2.  **Smart Caching (Redis)**:
-    *   **Laporan Bulanan (`/monthly-fee/breakdown`)**:
-        *   Bulan berjalan: Cache 1 jam (untuk menyeimbangkan beban server vs update data).
-        *   Bulan lalu: Cache 24 jam.
-        *   *Auto-Invalidation*: Cache otomatis dihapus saat ada input iuran baru.
-    *   **Daftar Blok (`/block-houses`)**:
-        *   Cache 30 hari (karena struktur blok jarang berubah).
-    *   **Daftar Warga**:
-        *   Menggunakan `RESIDENT_CACHE_VERSION`. Jika ada perubahan logika di backend, cukup ganti versi di `.env` untuk mereset cache user.
-
-## 📂 Struktur Project
-
-*   `prisma/` - Schema database & migrasi.
-*   `routes/` - Definisi API endpoints.
-*   `middlewares/` - Auth & Caching logic.
-*   `lib/` - Helper clients (Prisma, Redis).
-*   `config/` - Konfigurasi 3rd party services.
-
-## 🤖 Cron Jobs
-
-Aplikasi ini memiliki endpoint khusus untuk Cron Job (misal: trigger OCR otomatis):
-*   `POST /api/cron/run-ocr`
-*   `POST /api/cron/release-deferred-v1/:date`
-
-Pastikan header `x-cron-secret` dikirim sesuai dengan `.env`.
+Lihat [`.env.example`](.env.example). Di luar `NODE_ENV=production`, koneksi ke database selain localhost ditolak (hindari menulis ke DB produksi tanpa sengaja); set `ALLOW_REMOTE_DB=1` kalau memang perlu.

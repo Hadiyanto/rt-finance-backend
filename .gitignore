@@ -1,8 +1,6 @@
 node_modules
-uploads/*
 .env
+# data bahasa OCR (5 MB), diunduh terpisah
 eng.traineddata
-
-# v2
-whatsapp-session/
-tmp_ocr_*
+# file sementara upload dari app lama
+uploads/
